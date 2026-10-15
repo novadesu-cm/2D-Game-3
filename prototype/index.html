@@ -92,6 +92,8 @@ textarea{width:100%;min-height:120px;background:var(--panel);color:var(--fg);bor
 #rz{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:90;background:var(--warn);color:#fff;border-radius:12px;padding:14px 22px;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.3)}
 #rz.hot{background:#c0392b}
 .st h3{margin-bottom:6px}
+#pop{position:fixed;z-index:70;width:280px;max-width:calc(100vw - 16px);background:var(--panel);border:2px solid var(--accent);border-radius:10px;padding:10px 12px;box-shadow:0 6px 20px rgba(0,0,0,.3);display:flex;flex-direction:column;gap:5px;font-size:12.5px}
+#pop .x{position:absolute;top:6px;right:6px}
 .sell{text-align:center;color:var(--muted);font-size:13px}
 
 /* one-screen layout */
@@ -463,10 +465,8 @@ function act(a,v){
   case'slot':{
     if(v>=S.unlocked){if(v===S.unlocked&&S.coins>=slotCost()){S.coins-=slotCost();S.unlocked++;log(`ซื้อช่องฟาร์มที่ ${S.unlocked}`)}break}
     const here=S.farm[v];
-    if(cur&&!cur.a.busy&&(!here||here.id!==cur.a.id)&&!(here&&here.busy)){
-      if(cur.loc==='stash'){S.stash.splice(cur.i,1);S.farm[v]=cur.a;if(here)S.stash.push(here)}
-      else{S.farm[cur.i]=here||null;S.farm[v]=cur.a}
-    }else if(here)sel=sel===here.id?null:here.id;
+    if(here)sel=sel===here.id?null:here.id;
+    else if(cur&&cur.loc==='stash'&&!cur.a.busy)placeFarm(cur.a.id,v);
     break}
   case'toStash':if(cur&&cur.loc==='farm'&&!cur.a.busy&&S.stash.length<stashCap()){S.farm[cur.i]=null;S.stash.push(cur.a)}break;
   case'toFarm':if(cur&&cur.loc==='stash'&&!cur.a.busy){const i=S.farm.findIndex((x,j)=>!x&&j<S.unlocked);if(i>=0){S.stash.splice(cur.i,1);S.farm[i]=cur.a}}break;
@@ -538,22 +538,48 @@ function roleText(a){
   if(has(a,'K'))o.push(`🏠 ออฟไลน์ +${OFFH[r]}ชม. ช่องเก็บ +${KST[r]}`);
   return o.join(' · ');
 }
-function actionHTML(){
-  const f=sel!=null?find(sel):null;
-  if(!f)return`<div class="act1 sub">ลากสัตว์ไปวางที่ฟาร์ม ช่องเก็บ โรงผสม หรือลูกเรือได้เลย หรือแตะสัตว์เพื่อเลือกแล้วใช้ปุ่ม</div>`;
-  const a=f.a,s=sp(a),b=[];
+function infoHTML(f){
+  const a=f.a,s=sp(a),r=s.rar,m=mult(a),b=[],L=[];
+  const onFarm=f.loc==='farm';
+  const where=onFarm?`อยู่ในฟาร์ม ช่อง ${f.i+1}`:f.loc==='stash'?'อยู่ในช่องเก็บสัตว์':a.busy==='nur'?'กำลังผสมในโรงผสม':a.busy==='exp'?'ออกสำรวจอยู่':'เตรียมในโรงผสม/ลูกเรือ';
+  const need=onFarm?'':' <span class="sub">(ทำงานเมื่ออยู่ในช่องฟาร์ม)</span>';
+  if(isProducer(a)){
+    const [fam,pn,pe]=PR[a.sp],bo=onFarm?boostOf(f.i):0,iv=INT[r]/(m*(1+bo));
+    L.push(`<div>🪙 <b>ผู้ผลิต</b>: ${pe} ${pn} (${FAM[fam].n}) มูลค่า 🪙${V[r]}${need}</div><div class="sub">ทุก ${(INT[r]/m).toFixed(1)} วิ${onFarm&&bo?` → ${iv.toFixed(1)} วิ (หนุน +${Math.round(bo*100)}%)`:''} · กินน้ำ ${(WUSE[r]*m).toFixed(2)}/วิ${onFarm?` · กอง ${a.pile}/${pileCap()}`:''}</div>`);
+  }
+  if(has(a,'B')){const n=onFarm?nb(f.i).filter(i=>isProducer(S.farm[i])).length:0;L.push(`<div>📣 <b>ผู้หนุน</b>: ช่องบน/ล่าง/ซ้าย/ขวา ผลิตเร็วขึ้น +${Math.round(BOOST[r]*m*100)}%${onFarm?` (ตอนนี้หนุน ${n} ช่อง)`:need}</div>`)}
+  if(has(a,'Br'))L.push(`<div>💞 <b>ผู้เร่งผสม</b>: ลดเวลาผสมทุกคู่ ${Math.round(HASTE[r]*100)}% · โอกาสสีพิเศษ +${(HASTE[r]*10).toFixed(1)}%${onFarm?'':need}</div>`);
+  if(has(a,'S'))L.push(`<div>🧭 <b>ผู้เร่งสำรวจ</b>: ลดเวลาสำรวจ ${Math.round(HASTE[r]*100)}%${onFarm?'':need}</div>`);
+  if(has(a,'K'))L.push(`<div>🏠 <b>ผู้เฝ้าฟาร์ม</b>: เพดานออฟไลน์ +${OFFH[r]} ชม. · ช่องเก็บ +${KST[r]}${onFarm?'':need}</div>`);
+  const same=[...S.stash,...S.farm.filter(Boolean)].filter(x=>x.sp===a.sp&&x.star===a.star&&!x.busy).length;
   if(a.busy==='prep')b.push(`<span class="sub">เตรียมอยู่ในกล่องโรงผสม/สำรวจ (ลากไปวางที่อื่นเพื่อยกเลิก)</span>`);
-  else if(a.busy)b.push(`<span class="sub">🔒 กำลังทำงาน</span>`);
+  else if(a.busy)b.push(`<span class="sub">🔒 กำลังทำงาน จัดการไม่ได้จนกว่าจะเสร็จ</span>`);
   else{
     if(f.loc==='farm')b.push(`<button class="btn sm" data-a="toStash" ${S.stash.length>=stashCap()?'disabled':''}>เก็บเข้าช่องเก็บ</button>`);
     else b.push(`<button class="btn sm" data-a="toFarm" ${S.farm.findIndex((x,j)=>!x&&j<S.unlocked)<0?'disabled':''}>ลงฟาร์ม</button>`);
     b.push(`<button class="btn sm" data-a="nurPut" ${(S.nur.end!=null||(S.nur.a&&S.nur.b))?'disabled':''}>ใส่โรงผสม</button>`);
     if(f.loc==='stash')b.push(`<button class="btn sm" data-a="crewAdd" ${S.exp||S.crew.length>=3?'disabled':''}>เป็นลูกเรือ</button>`);
-    const same=[...S.stash,...S.farm.filter(Boolean)].filter(x=>x.sp===a.sp&&x.star===a.star&&!x.busy).length;
     if(a.star<3)b.push(`<button class="btn sm" data-a="merge" ${same>=3?'':'disabled'}>รวมดาว ${Math.min(same,3)}/3</button>`);
-    b.push(`<button class="btn sm" data-a="release">ปล่อย +🌿${ESS[rar(a)]*a.star}</button>`);
+    b.push(`<button class="btn sm" data-a="release">ปล่อย +🌿${ESS[r]*a.star}</button>`);
   }
-  return`<div class="act1"><div><b>${s.em} ${s.n}</b> <span class="sub" style="color:var(--r${s.rar})">${RAR[s.rar]} ★${a.star}${a.shiny?' ✨×1.5':''}</span></div><div class="sub rt2">${roleText(a)}</div><div class="btns">${b.join('')}</div></div>`;
+  return`<button class="btn sm x" data-a="sel" data-v="${a.id}" title="ปิด">✕</button>
+  <div><b style="font-size:15px">${s.em} ${s.n}</b> <span style="color:var(--r${r});font-weight:600">${RAR[r]}</span> <span>${'★'.repeat(a.star)}${a.shiny?' ✨×1.5':''}</span></div>
+  <div class="sub">${where}</div>${L.join('')}
+  <div class="sub">${s.par?`สูตร: ${SP[s.par[0]].em}${SP[s.par[0]].n} + ${SP[s.par[1]].em}${SP[s.par[1]].n}`:'พบในธรรมชาติ (ได้จากการสำรวจ)'}${a.star<3?` · ดาวเท่ากัน ${Math.min(same,3)}/3 `:' · ดาวสูงสุดแล้ว'}</div>
+  <div class="btns">${b.join('')}</div>`;
+}
+function placePop(){
+  const pop=document.getElementById('pop');if(!pop)return;
+  const anchor=document.querySelector(`[data-drag="animal:${sel}"]`);
+  const pw=pop.offsetWidth,ph=pop.offsetHeight,vw=innerWidth,vh=innerHeight;
+  let left=8,top=8;
+  if(anchor){
+    const r=anchor.getBoundingClientRect();
+    left=r.right+8;if(left+pw>vw-8)left=r.left-pw-8;
+    if(left<8)left=Math.max(8,Math.min(vw-pw-8,r.left));
+    top=Math.max(8,Math.min(vh-ph-8,r.top+r.height/2-ph/2));
+  }
+  pop.style.left=left+'px';pop.style.top=top+'px';pop.style.visibility='visible';
 }
 function hintHTML(){
   let h='';
@@ -575,7 +601,7 @@ function toolbarHTML(){
   const piles=S.farm.reduce((n,a)=>n+(a?a.pile:0),0);
   return`<div class="btns" style="align-items:center"><button class="btn pri" data-a="collectAll" ${piles&&bagTotal()<bagCap()?'':'disabled'}>🧺 เก็บทั้งหมด (${piles})</button>
   ${U('spr')?`<button class="btn ${S.sprOn?'on':''}" data-a="spr">💦 สปริงเกอร์ ${S.sprOn?'เปิด':'ปิด'}</button>`:''}
-  <span class="sub">${U('drone')?'🚁':''} ${U('chef')?'👨‍🍳':''} ${U('cash')?'🧾':''}</span></div>`;
+  <span class="sub">${U('drone')?'🚁':''} ${U('chef')?'👨‍🍳':''} ${U('cash')?'🧾':''}</span><span class="sub">แตะสัตว์เพื่อดูข้อมูล · ลากเพื่อย้าย</span></div>`;
 }
 const UCATS=[['collect','🧺 เก็บ'],['cook','🍲 ปรุง'],['sell','💰 ขาย'],['water','💦 น้ำ'],['animal','🐾 สัตว์']];
 const UCAT={drone:'collect',bag:'collect',pile:'collect',pot:'cook',cook:'cook',chef:'cook',show:'sell',price:'sell',cash:'sell',cashSpd:'sell',spr:'water',pump:'water',tank:'water',aRel:'animal',aExp:'animal',aNur:'animal'};
@@ -700,14 +726,16 @@ function render(){
     <div class="res">${statusHTML()}<span>🌿 ${S.ess}</span>${menu.map(([k,n])=>`<button class="tab ${tab===k?'on':''}" data-a="tab" data-v="${k}">${n}${k==='up'&&aff&&tab!=='up'?' <span class="badge">●</span>':''}</button>`).join('')}</div></div>
     <div class="msg1">${S.msgs[0]||'&nbsp;'}${speed>1?` · <b class="badge">เร่งเวลา ×${speed}</b>`:''}</div>
     ${hintHTML()}</div>
-  <div class="a-farm"><div class="farm">${Array.from({length:12},(_,i)=>slotHTML(i)).join('')}</div><div style="height:6px"></div>${toolbarHTML()}<div style="height:6px"></div>${actionHTML()}</div>
+  <div class="a-farm"><div class="farm">${Array.from({length:12},(_,i)=>slotHTML(i)).join('')}</div><div style="height:6px"></div>${toolbarHTML()}</div>
   <div class="a-kit">${kitchenCard()}</div>
   <div class="a-side">${nurCard()}${expCard()}</div>
   <div class="a-stash">${stashCard()}</div>
+  ${(()=>{const f=sel!=null?find(sel):null;return f?`<div id="pop" style="visibility:hidden">${infoHTML(f)}</div>`:''})()}
   ${tab?`<div class="modal"><div class="mbox"><div class="mh"><b>${title}</b><button class="btn sm" data-a="tab" data-v="${tab}">ปิด ✕</button></div><div class="mbody">${panelHTML()}</div></div></div>`:''}`;
   ['.mbody','.sgrid','.counter'].forEach((q,i)=>{const e=document.querySelector(q);if(e)e.scrollTop=keep[i]});
   if(nurDone){const h=document.querySelector('[data-drop=nur] h3');h&&(h.innerHTML+=' <span class="badge">●</span>')}
   if(expDone){const h=document.querySelector('[data-drop=crew] h3');h&&(h.innerHTML+=' <span class="badge">●</span>')}
+  placePop();
   tickUI();
 }
 
@@ -812,6 +840,7 @@ document.addEventListener('pointermove',e=>{
     const g=document.createElement('div');g.className='ghost';g.textContent=drag.gh;document.body.appendChild(g);drag.ghost=g;
     document.querySelectorAll('[data-drop]').forEach(t=>{if(okTarget(drag.src,dkind(t)))t.classList.add('dropok')});
     if(drag.src.t==='animal')document.getElementById('rz').hidden=false;
+    const pp=document.getElementById('pop');if(pp)pp.style.display='none';
   }
   ghostMove(e);hotUpdate(e);
   if(e.clientY<70)window.scrollBy(0,-14);else if(e.clientY>innerHeight-70)window.scrollBy(0,14);
@@ -830,9 +859,10 @@ function pointerEnd(e,cancel){
 }
 document.addEventListener('pointerup',e=>pointerEnd(e,false));
 document.addEventListener('pointercancel',e=>pointerEnd(e,true));
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&sel!=null){sel=null;render()}});
 window.addEventListener('blur',()=>{pressed=false;dragEnd()});
 {const rz=document.createElement('div');rz.id='rz';rz.dataset.drop='release';rz.hidden=true;rz.textContent='🌿 วางที่นี่เพื่อปล่อยสัตว์';document.body.appendChild(rz)}
-document.addEventListener('click',e=>{if(suppress)return;if(e.target.classList&&e.target.classList.contains('modal')&&tab){act('tab',tab);return}const el=e.target.closest('[data-a]');if(el&&!el.disabled)act(el.dataset.a,el.dataset.v)});
+document.addEventListener('click',e=>{if(suppress)return;if(sel!=null&&!tab&&!e.target.closest('#pop,[data-a],[data-drag],.modal')){sel=null;render();return}if(e.target.classList&&e.target.classList.contains('modal')&&tab){act('tab',tab);return}const el=e.target.closest('[data-a]');if(el&&!el.disabled)act(el.dataset.a,el.dataset.v)});
 
 /* ---------- boot ---------- */
 if(!load())init();

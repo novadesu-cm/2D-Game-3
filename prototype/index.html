@@ -1,0 +1,407 @@
+<title>Animal Mix Farm</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Mali:wght@500;700&family=Noto+Sans+Thai:wght@400;600&display=swap">
+<style>
+/* Layout: one narrow column (~420px) that mimics the side-screen window. Farm grid on top, tabbed panels below. */
+:root{
+  --bg:#eaf0e4; --panel:#fafcf6; --fg:#1d2a1c; --muted:#58684f; --line:#cbd8c2;
+  --accent:#3d7a38; --accent-fg:#ffffff; --warn:#a8501a; --ok:#2c7a46;
+  --r0:#7a8975; --r1:#26896a; --r2:#2a68b3; --r3:#8643b2; --r4:#c27d0a;
+  --font-d:'Mali','Noto Sans Thai',system-ui,sans-serif; --font-b:'Noto Sans Thai',system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111a13; --panel:#1a261d; --fg:#e4eedf; --muted:#98ad90; --line:#2e4132;
+  --accent:#74c26b; --accent-fg:#0c180e; --warn:#e69a62; --ok:#6fd08c;
+  --r0:#93a38e; --r1:#4fc4a0; --r2:#6fa5ee; --r3:#b98be0; --r4:#e8aa3b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111a13; --panel:#1a261d; --fg:#e4eedf; --muted:#98ad90; --line:#2e4132;
+  --accent:#74c26b; --accent-fg:#0c180e; --warn:#e69a62; --ok:#6fd08c;
+  --r0:#93a38e; --r1:#4fc4a0; --r2:#6fa5ee; --r3:#b98be0; --r4:#e8aa3b; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:14px/1.45 var(--font-b);padding-block:12px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+button{font:inherit;color:inherit;cursor:pointer}
+#app{max-width:440px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px}
+.top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.coins{font:700 22px var(--font-d);font-variant-numeric:tabular-nums}
+.rate{color:var(--muted);font-variant-numeric:tabular-nums}
+.res{display:flex;gap:12px;align-items:baseline;font-variant-numeric:tabular-nums}
+.sub{color:var(--muted);font-size:12px}
+.msgs{font-size:12px;color:var(--muted);min-height:3.6em}
+.msgs div:first-child{color:var(--fg)}
+.hint{background:color-mix(in srgb,var(--accent) 14%,var(--panel));border-color:var(--accent);font-size:13px}
+.farm{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.cell{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;
+  min-height:76px;padding:4px 2px;border:2px solid var(--rc,var(--line));border-radius:8px;background:var(--panel);min-width:0}
+.cell .em{font-size:26px;line-height:1.1}
+.cell .nm{font-size:11px;line-height:1.2;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cell .meta{font-size:10px;color:var(--muted);min-height:12px}
+.cell .ro{font-size:10px}
+.cell .rt{font-size:10px;color:var(--ok);font-variant-numeric:tabular-nums}
+.cell.sel{outline:3px solid var(--accent);outline-offset:1px}
+.cell.busy{opacity:.55}
+.cell.empty{border:2px dashed var(--line);color:var(--muted);font-size:20px}
+.cell.buy{border:2px dashed var(--accent);color:var(--accent);font-size:12px}
+.cell.buy.no{border-color:var(--line);color:var(--muted)}
+.cell.lock{border:2px dashed var(--line);opacity:.4}
+.act{display:flex;flex-direction:column;gap:8px}
+.act h3,.panel h3{margin:0;font:700 15px var(--font-d)}
+.btns{display:flex;flex-wrap:wrap;gap:6px}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:7px;padding:6px 10px;min-height:34px}
+.btn.pri{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.btn:disabled{opacity:.45;cursor:default}
+.tabs{display:flex;gap:4px;overflow-x:auto}
+.tab{flex:1;border:1px solid var(--line);background:var(--panel);border-radius:7px 7px 0 0;padding:6px 4px;white-space:nowrap;font-size:13px}
+.tab.on{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.badge{color:var(--warn);font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.panel{display:flex;flex-direction:column;gap:10px;border-top-left-radius:0}
+.bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);width:0}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pair{display:flex;align-items:center;gap:8px}
+.pair .cell{flex:1}
+.zone.on{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.list{margin:0;padding-left:18px;color:var(--muted);font-size:12px}
+.hintline{font-size:11px;color:var(--muted);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+textarea{width:100%;min-height:120px;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:7px;font:11px/1.4 ui-monospace,monospace;padding:6px}
+.dim{opacity:.5}
+</style>
+
+<div id="app"></div>
+
+<script>
+(()=>{
+'use strict';
+/* ---------- data ---------- */
+const RAR=['สามัญ','พิเศษ','หายาก','มหากาพย์','ตำนาน'];
+const ROLE={P:{n:'ผู้ผลิต',i:'🪙'},B:{n:'ผู้หนุน',i:'📣'},Br:{n:'ผู้เร่งผสม',i:'💞'},S:{n:'ผู้เร่งสำรวจ',i:'🧭'},K:{n:'ผู้เฝ้าฟาร์ม',i:'🏠'}};
+// [name, emoji, rarity, roles, parent indices]
+const RAW=[
+['ไก่','🐔',0,['P']],['เป็ด','🦆',0,['P']],['แกะ','🐑',0,['P']],['กระต่าย','🐇',0,['B']],['หนู','🐭',0,['S']],['กบ','🐸',0,['Br']],['หอยทาก','🐌',0,['K']],
+['ห่าน','🦢',1,['P'],[0,1]],['อัลปาก้า','🦙',1,['P'],[2,3]],['แฮมสเตอร์','🐹',1,['B'],[4,3]],['นากน้ำ','🦦',1,['S'],[1,5]],['ซาลาแมนเดอร์','🦎',1,['Br'],[5,6]],['เต่า','🐢',1,['K'],[6,2]],
+['นกยูง','🦚',2,['B'],[7,0]],['แกะขนทอง','🐏',2,['P'],[8,2]],['บีเวอร์','🦫',2,['P'],[10,9]],['นกฮูก','🦉',2,['S'],[9,7]],['กบสายรุ้ง','🌈',2,['Br'],[11,10]],['เต่าทะเลยักษ์','🐊',2,['K'],[12,11]],
+['ฟีนิกซ์','🔥',3,['B'],[13,16]],['กวางทองคำ','🦌',3,['P'],[14,15]],['อินทรีฟ้า','🦅',3,['S'],[16,15]],['ปลาคราฟทอง','🐠',3,['Br'],[17,18]],['เต่าพิภพ','🌏',3,['K'],[18,14]],
+['นาค','🐉',4,['Br','K'],[22,23]],['กินรี','🧚',4,['P','B'],[19,20]],['ครุฑ','🪽',4,['S','B'],[21,19]]];
+const SP=RAW.map(r=>({n:r[0],em:r[1],rar:r[2],roles:r[3],par:r[4]||null}));
+const RC={}; SP.forEach((s,i)=>{if(s.par)RC[[...s.par].sort((a,b)=>a-b).join('-')]=i});
+const PROD=[1,4,16,64,256], BOOST=[.1,.2,.35,.6,1], HASTE=[.03,.06,.1,.15,.2], OFFH=[.5,1,2,4,8], KST=[1,2,3,5,8];
+const STAR=[1,1.5,2.25], NTIME=[20,120,600,3600,14400], NCOST=[10,50,1500,60000,3e6];
+const ESS=[1,3,8,20,50];
+const ZONES=[{n:'ทุ่งหญ้า',need:0,dur:30},{n:'ลำธาร',need:6,dur:1800},{n:'ป่าลึก',need:12,dur:7200},{n:'ภูผาเมฆ',need:18,dur:21600},{n:'ถ้ำนาคา',need:24,dur:43200}];
+const KEY='amf_proto_v1';
+
+/* ---------- state ---------- */
+let S, sel=null, tab='stash', zoneSel=0, speed=1;
+const fresh=()=>({v:1,t:0,coins:0,ess:0,unlocked:3,farmLvl:0,stashLvl:0,uid:1,farm:Array(12).fill(null),stash:[],
+  codex:{},shiny:{},known:{},tried:{},nur:{a:null,b:null,end:null},crew:[],exp:null,pity:0,acts:0,explored:0,nursed:0,
+  log:[],msgs:[],lastReal:Date.now(),created:Date.now()});
+const mk=sp=>({id:S.uid++,sp,star:1,shiny:false,busy:null});
+function load(){try{const j=localStorage.getItem(KEY);if(j){S=JSON.parse(j);return true}}catch(e){}return false}
+function save(){try{S.lastReal=Date.now();localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function init(){
+  S=fresh();S.coins=60;
+  [0,1,2].forEach((sp,i)=>{S.farm[i]=mk(sp);S.codex[sp]=1});
+}
+
+/* ---------- helpers ---------- */
+const sp=a=>SP[a.sp], rar=a=>SP[a.sp].rar, has=(a,r)=>SP[a.sp].roles.includes(r);
+const mult=a=>STAR[a.star-1]*(a.shiny?1.5:1);
+const fmt=n=>{if(n<1000)return n<10&&n%1?n.toFixed(1):Math.floor(n)+'';const u=['K','M','B','T','Qa'];let i=-1;while(n>=1000&&i<u.length-1){n/=1000;i++}return n.toFixed(n<10?2:n<100?1:0)+u[i]};
+const fmtT=s=>{s=Math.max(0,Math.ceil(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return h?`${h}ชม.${String(m).padStart(2,'0')}น.`:`${m}:${String(x).padStart(2,'0')}`};
+const find=uid=>{let i=S.farm.findIndex(a=>a&&a.id===uid);if(i>=0)return{a:S.farm[i],loc:'farm',i};i=S.stash.findIndex(a=>a.id===uid);return i>=0?{a:S.stash[i],loc:'stash',i}:null};
+const nb=i=>{const r=(i/4)|0,c=i%4,o=[];if(r>0)o.push(i-4);if(r<2)o.push(i+4);if(c>0)o.push(i-1);if(c<3)o.push(i+1);return o};
+const active=i=>{const a=S.farm[i];return a&&!a.busy&&i<S.unlocked?a:null};
+function slotRate(i){const a=active(i);if(!a||!has(a,'P'))return 0;let b=0;for(const n of nb(i)){const x=active(n);if(x&&has(x,'B'))b+=BOOST[rar(x)]*mult(x)}return PROD[rar(a)]*mult(a)*(1+b)*(1+.25*S.farmLvl)}
+const rate=()=>{let r=0;for(let i=0;i<12;i++)r+=slotRate(i);return r};
+function haste(role){let h=0;for(let i=0;i<12;i++){const a=active(i);if(a&&has(a,role))h+=HASTE[rar(a)]}return Math.min(.6,h)}
+function keepers(f){let h=0;for(let i=0;i<12;i++){const a=active(i);if(a&&has(a,'K'))h+=f[rar(a)]}return h}
+const offCap=()=>Math.min(24,4+keepers(OFFH));
+const stashCap=()=>12+4*S.stashLvl+keepers(KST);
+const slotCost=()=>Math.round(100*Math.pow(2.2,S.unlocked-3));
+const upCost=()=>Math.round(300*Math.pow(2.5,S.farmLvl));
+const stCost=()=>3*(S.stashLvl+1);
+function log(m){S.log.push({t:S.t,m});if(S.log.length>200)S.log.shift();S.msgs.unshift(`[${fmtT(S.t)}] ${m}`);S.msgs.length=Math.min(S.msgs.length,3)}
+function discover(i,shiny){
+  if(!S.codex[i]){S.codex[i]=1;log(`ค้นพบ ${SP[i].em} ${SP[i].n} (${Object.keys(S.codex).length}/27)`)}
+  if(shiny&&!S.shiny[i]){S.shiny[i]=1;log(`ได้สีพิเศษ ✨ ${SP[i].n}`)}
+}
+function pushStash(a){
+  if(S.stash.length<stashCap()){S.stash.push(a);return true}
+  S.ess+=ESS[rar(a)]*a.star;S.coins+=PROD[rar(a)]*20;log(`ช่องเก็บเต็ม ปล่อย ${sp(a).n} อัตโนมัติ`);return false;
+}
+const wpick=(arr,w)=>{let t=0;const ws=arr.map(w);ws.forEach(x=>t+=x);let r=Math.random()*t;for(let i=0;i<arr.length;i++){r-=ws[i];if(r<=0)return arr[i]}return arr[arr.length-1]};
+const codexN=()=>Object.keys(S.codex).length;
+
+/* ---------- nursery ---------- */
+function nurInfo(){
+  const A=S.nur.a&&find(S.nur.a),B=S.nur.b&&find(S.nur.b);if(!A||!B)return null;
+  const same=A.a.sp===B.a.sp,tier=same?rar(A.a):Math.min(4,Math.max(rar(A.a),rar(B.a))+1);
+  return{A:A.a,B:B.a,same,tier,cost:NCOST[tier],time:NTIME[tier]*(1-haste('Br'))};
+}
+function nurStart(){
+  const n=nurInfo();if(!n||S.coins<n.cost||S.nur.end!=null)return;
+  S.coins-=n.cost;const key=[n.A.sp,n.B.sp].sort((a,b)=>a-b).join('-');
+  let res=n.same?n.A.sp:RC[key]!==undefined?RC[key]:(Math.random()<.5?n.A.sp:n.B.sp);
+  Object.assign(S.nur,{key,res,shiny:Math.random()<.05+haste('Br')*.1,start:S.t,end:S.t+n.time});
+  n.A.busy=n.B.busy='nur';S.nursed++;
+}
+function nurFinish(){
+  const n=S.nur;[n.a,n.b].forEach(u=>{const f=find(u);if(f)f.a.busy=null});
+  const a=mk(n.res);a.shiny=n.shiny;const isRecipe=RC[n.key]===n.res;
+  S.stash.push(a);discover(n.res,n.shiny);S.tried[n.key]=n.res;
+  if(isRecipe){S.known[n.key]=1}
+  log(`ไข่ฟัก: ${SP[n.res].em} ${SP[n.res].n}${n.shiny?' ✨':''}${isRecipe?' (ตรงสูตร)':''}`);
+  S.nur={a:null,b:null,end:null};
+}
+
+/* ---------- expedition ---------- */
+function expStart(){
+  const z=ZONES[zoneSel];if(S.exp||!S.crew.length||codexN()<z.need)return;
+  const dur=z.dur*(1-haste('S')),crew=S.crew.map(u=>find(u)).filter(Boolean);
+  crew.forEach(f=>f.a.busy='exp');
+  S.exp={zone:zoneSel,start:S.t,end:S.t+dur,dur,crew:crew.map(f=>f.a.id),cb:crew.reduce((s,f)=>s+rar(f.a),0)};
+  S.crew=[];S.explored++;
+}
+function expFinish(){
+  const e=S.exp,z=e.zone;e.crew.forEach(u=>{const f=find(u);if(f)f.a.busy=null});
+  const n=1+Math.floor(e.crew.length/2);
+  for(let k=0;k<n;k++){
+    let pool=SP.map((s,i)=>i).filter(i=>SP[i].rar<=z);
+    let pick;
+    if(z>0&&S.pity>=4)pick=wpick(pool.filter(i=>SP[i].rar===z),()=>1);
+    else pick=wpick(pool,i=>{let w=(z>0&&SP[i].rar===z)?.3+.1*e.cb:1;return w*(S.codex[i]?1:3)});
+    S.pity=(z>0&&SP[pick].rar===z)?0:S.pity+1;
+    const a=mk(pick);discover(pick,false);
+    log(`สำรวจ${ZONES[z].n}: พบ ${SP[pick].em} ${SP[pick].n}`);pushStash(a);
+  }
+  const coins=rate()*Math.min(e.dur,3600)*.25;S.coins+=coins;
+  let extra=`เหรียญ +${fmt(coins)}`;
+  if(Math.random()<.35){
+    const unk=Object.keys(RC).filter(k=>!S.known[k]&&!S.codex[RC[k]]);
+    if(unk.length){const k=unk[Math.floor(Math.random()*unk.length)];S.known[k]=1;const [x,y]=k.split('-');extra+=`, เบาะแสสูตร ${SP[RC[k]].n} = ${SP[x].n}+${SP[y].n}`}
+  }
+  if(z>=2){const g=1+z;S.ess+=g;extra+=`, 🌿+${g}`}
+  log(`สำรวจ${ZONES[z].n}เสร็จ: ${extra}`);S.exp=null;
+}
+
+/* ---------- tick ---------- */
+function step(){
+  let ch=false;
+  if(S.nur.end!=null&&S.t>=S.nur.end&&S.stash.length<stashCap()){nurFinish();ch=true}
+  if(S.exp&&S.t>=S.exp.end){expFinish();ch=true}
+  return ch;
+}
+let last=performance.now(), sv=0;
+function loop(){
+  const now=performance.now(),dt=Math.min(600,(now-last)/1000);last=now;
+  const g=dt*speed;S.coins+=rate()*g;S.t+=g;
+  const ch=step();
+  if(ch)render();else tickUI();
+  sv+=dt;if(sv>5){sv=0;save()}
+}
+function tickUI(){
+  const q=s=>document.getElementById(s);
+  q('coins')&&(q('coins').textContent=fmt(S.coins));
+  q('rate')&&(q('rate').textContent='+'+fmt(rate())+'/วิ');
+  document.querySelectorAll('[data-e]').forEach(el=>{
+    const s=+el.dataset.s,e=+el.dataset.e;
+    if(el.classList.contains('t'))el.textContent=fmtT(e-S.t);
+    else el.firstElementChild.style.width=Math.min(100,100*(S.t-s)/Math.max(1,e-s))+'%';
+  });
+  document.querySelectorAll('[data-cost]').forEach(el=>{
+    const ok=(el.dataset.cur==='e'?S.ess:S.coins)>=+el.dataset.cost;
+    if(el.classList.contains('buy'))el.classList.toggle('no',!ok);else el.disabled=!ok;
+  });
+}
+
+/* ---------- actions ---------- */
+function clearPrep(uid){const f=find(uid);if(f&&f.a.busy==='prep')f.a.busy=null}
+function act(a,v){
+  S.acts++;v=v===undefined?v:isNaN(+v)?v:+v;
+  const cur=sel!=null?find(sel):null;
+  switch(a){
+  case'tab':tab=v;break;
+  case'sel':sel=sel===v?null:v;break;
+  case'slot':{
+    if(v>=S.unlocked){if(v===S.unlocked&&S.coins>=slotCost()){S.coins-=slotCost();S.unlocked++;log(`ซื้อช่องฟาร์มที่ ${S.unlocked}`)}break}
+    const here=S.farm[v];
+    if(cur&&!cur.a.busy&&(!here||here.id!==cur.a.id)&&!(here&&here.busy)){
+      if(cur.loc==='stash'){S.stash.splice(cur.i,1);S.farm[v]=cur.a;if(here)S.stash.push(here)}
+      else{S.farm[cur.i]=here||null;S.farm[v]=cur.a}
+    }else if(here)sel=sel===here.id?null:here.id;
+    break}
+  case'toStash':if(cur&&cur.loc==='farm'&&!cur.a.busy&&S.stash.length<stashCap()){S.farm[cur.i]=null;S.stash.push(cur.a)}break;
+  case'toFarm':if(cur&&cur.loc==='stash'&&!cur.a.busy){const i=S.farm.findIndex((x,j)=>!x&&j<S.unlocked);if(i>=0){S.stash.splice(cur.i,1);S.farm[i]=cur.a}}break;
+  case'nurPut':if(cur&&!cur.a.busy){const k=S.nur.a==null?'a':S.nur.b==null?'b':null;if(k&&S.nur.end==null){S.nur[k]=cur.a.id;cur.a.busy='prep'}}break;
+  case'nurCancel':if(S.nur.end==null){clearPrep(S.nur.a);clearPrep(S.nur.b);S.nur={a:null,b:null,end:null}}break;
+  case'nurStart':nurStart();break;
+  case'crewAdd':if(cur&&cur.loc==='stash'&&!cur.a.busy&&S.crew.length<3){S.crew.push(cur.a.id);cur.a.busy='prep'}break;
+  case'crewDel':if(!S.exp){clearPrep(v);S.crew=S.crew.filter(u=>u!==v)}break;
+  case'zone':zoneSel=v;break;
+  case'expStart':expStart();break;
+  case'merge':if(cur&&cur.a.star<3&&!cur.a.busy){
+    const o=[...S.stash,...S.farm.filter(Boolean)].filter(x=>x.id!==cur.a.id&&x.sp===cur.a.sp&&x.star===cur.a.star&&!x.busy);
+    if(o.length>=2){o.sort((x,y)=>(S.stash.includes(y)?1:0)-(S.stash.includes(x)?1:0));
+      for(const x of o.slice(0,2)){const f=find(x.id);if(f.loc==='stash')S.stash.splice(f.i,1);else S.farm[f.i]=null}
+      cur.a.star++;cur.a.shiny=cur.a.shiny||o.slice(0,2).some(x=>x.shiny);log(`รวมดาว ${sp(cur.a).n} เป็น ★${cur.a.star}`)}}break;
+  case'release':if(cur&&!cur.a.busy){const a=cur.a;S.coins+=PROD[rar(a)]*a.star*20;S.ess+=ESS[rar(a)]*a.star;
+    if(cur.loc==='farm')S.farm[cur.i]=null;else S.stash.splice(cur.i,1);log(`ปล่อย ${sp(a).n}`);sel=null}break;
+  case'upFarm':if(S.coins>=upCost()){S.coins-=upCost();S.farmLvl++;log(`อัปเกรดฟาร์มเป็นเลเวล ${S.farmLvl}`)}break;
+  case'upStash':if(S.ess>=stCost()){S.ess-=stCost();S.stashLvl++;log('ขยายช่องเก็บ +4')}break;
+  case'sort':S.stash.sort((x,y)=>rar(y)-rar(x)||x.sp-y.sp||y.star-x.star);break;
+  case'speed':speed=v;break;
+  case'cheat':if(v==='c')S.coins+=Math.max(10000,S.coins);else if(v==='e')S.ess+=20;else if(v==='t')S.t+=3600;break;
+  case'reset':try{localStorage.removeItem(KEY)}catch(e){}init();sel=null;tab='stash';break;
+  case'copy':{const t=document.getElementById('rep');if(t){t.select();try{navigator.clipboard.writeText(t.value)}catch(e){document.execCommand&&document.execCommand('copy')}}return}
+  }
+  step();render();
+}
+
+/* ---------- render ---------- */
+const cell=(a,action,v,extra='')=>{
+  const s=sp(a);
+  return `<button class="cell ${sel===a.id?'sel':''} ${a.busy?'busy':''}" style="--rc:var(--r${s.rar})" data-a="${action}" data-v="${v}">
+  <span class="em">${s.em}</span><span class="nm">${s.n}</span>
+  <span class="meta">${'★'.repeat(a.star)}${a.shiny?'✨':''}${a.busy?'🔒':''}</span>
+  <span class="ro">${s.roles.map(r=>ROLE[r].i).join('')}</span>${extra}</button>`};
+function slotHTML(i){
+  if(i<S.unlocked){const a=S.farm[i];
+    if(!a)return`<button class="cell empty" data-a="slot" data-v="${i}">＋</button>`;
+    const r=slotRate(i);return cell(a,'slot',i,r?`<span class="rt">+${fmt(r)}</span>`:'')}
+  if(i===S.unlocked){const c=slotCost();return`<button class="cell buy ${S.coins>=c?'':'no'}" data-a="slot" data-v="${i}" data-cost="${c}">ซื้อช่อง<br>🪙${fmt(c)}</button>`}
+  return`<div class="cell lock">🔒</div>`;
+}
+function roleText(a){
+  const r=rar(a),m=mult(a),o=[];
+  if(has(a,'P'))o.push(`🪙 ผลิต ${fmt(PROD[r]*m)}/วิ (ฐาน)`);
+  if(has(a,'B'))o.push(`📣 หนุนช่องข้าง +${Math.round(BOOST[r]*m*100)}%`);
+  if(has(a,'Br'))o.push(`💞 ลดเวลาผสม ${Math.round(HASTE[r]*100)}%`);
+  if(has(a,'S'))o.push(`🧭 ลดเวลาสำรวจ ${Math.round(HASTE[r]*100)}%`);
+  if(has(a,'K'))o.push(`🏠 ออฟไลน์ +${OFFH[r]}ชม. ช่องเก็บ +${KST[r]}`);
+  return o.join(' · ');
+}
+function actionHTML(){
+  const f=sel!=null?find(sel):null;
+  if(!f)return`<div class="box sub">แตะสัตว์เพื่อเลือก แล้วจะมีปุ่มให้ย้าย ผสม ส่งสำรวจ รวมดาว หรือปล่อย (แตะช่องฟาร์มว่างเพื่อวางสัตว์ที่เลือกอยู่)</div>`;
+  const a=f.a,s=sp(a),b=[];
+  if(a.busy==='prep')b.push(`<span class="sub">เตรียมอยู่ในแท็บโรงผสม/สำรวจ (ยกเลิกที่นั่น)</span>`);
+  else if(a.busy)b.push(`<span class="sub">🔒 กำลังทำงาน</span>`);
+  else{
+    if(f.loc==='farm')b.push(`<button class="btn" data-a="toStash" ${S.stash.length>=stashCap()?'disabled':''}>เก็บเข้าช่องเก็บ</button>`);
+    else b.push(`<button class="btn" data-a="toFarm" ${S.farm.findIndex((x,j)=>!x&&j<S.unlocked)<0?'disabled':''}>ลงฟาร์ม</button>`);
+    b.push(`<button class="btn" data-a="nurPut" ${(S.nur.end!=null||(S.nur.a&&S.nur.b))?'disabled':''}>ใส่โรงผสม</button>`);
+    if(f.loc==='stash')b.push(`<button class="btn" data-a="crewAdd" ${S.exp||S.crew.length>=3?'disabled':''}>เป็นลูกเรือ</button>`);
+    const same=[...S.stash,...S.farm.filter(Boolean)].filter(x=>x.sp===a.sp&&x.star===a.star&&!x.busy).length;
+    if(a.star<3)b.push(`<button class="btn" data-a="merge" ${same>=3?'':'disabled'}>รวมดาว (${Math.min(same,3)}/3)</button>`);
+    b.push(`<button class="btn" data-a="release">ปล่อย +🌿${ESS[rar(a)]*a.star}</button>`);
+  }
+  return`<div class="box act"><h3>${s.em} ${s.n} <span class="sub" style="color:var(--r${s.rar})">${RAR[s.rar]} ★${a.star}${a.shiny?' ✨×1.5':''}</span></h3><div class="sub">${roleText(a)}</div><div class="btns">${b.join('')}</div></div>`;
+}
+function hintHTML(){
+  let h='';
+  if(!S.nursed&&!S.nur.end)h='เริ่มที่นี่: เลือก 🐔 ไก่ → "ใส่โรงผสม" → เลือก 🦆 เป็ด → "ใส่โรงผสม" → แท็บโรงผสม กด "เริ่มผสม" (50 🪙 รอ 2 นาที เร่งเวลาได้ที่แท็บทดสอบ)';
+  else if(S.unlocked===3&&S.coins>=slotCost())h='ซื้อช่องฟาร์มช่องที่ 4 ได้แล้ว';
+  else if(!S.explored)h='ลองส่งสำรวจ: เลือกสัตว์ในช่องเก็บ → "เป็นลูกเรือ" → แท็บสำรวจ';
+  return h?`<div class="box hint">${h}</div>`:'';
+}
+function panelHTML(){
+  if(tab==='stash'){
+    const cap=stashCap(),cells=S.stash.map(a=>cell(a,'sel',a.id));
+    for(let i=S.stash.length;i<cap;i++)cells.push(`<div class="cell empty dim">·</div>`);
+    return`<div class="row"><h3>ช่องเก็บสัตว์ ${S.stash.length}/${cap}</h3><button class="btn" data-a="sort">จัดเรียง</button></div><div class="grid">${cells.join('')}</div>`;
+  }
+  if(tab==='nur'){
+    const n=nurInfo(),slot=(u,l)=>{const f=u&&find(u);return f?cell(f.a,'sel',f.a.id):`<div class="cell empty">${l}</div>`};
+    let body=`<div class="pair">${slot(S.nur.a,'พ่อ/แม่ 1')}<span>＋</span>${slot(S.nur.b,'พ่อ/แม่ 2')}</div>`;
+    if(S.nur.end!=null){
+      const wait=S.t>=S.nur.end;
+      body+=`<div class="bar" data-s="${S.nur.start}" data-e="${S.nur.end}"><i></i></div>`;
+      body+=wait?`<div class="badge">ไข่พร้อมฟัก แต่ช่องเก็บเต็ม ปล่อยหรือรวมดาวสัตว์ก่อน</div>`:`<div class="row">ฟักในอีก <b class="t" data-s="${S.nur.start}" data-e="${S.nur.end}"></b></div>`;
+    }else if(n){
+      body+=`<div class="row">ระดับผล: ${RAR[n.tier]} · ค่าใช้จ่าย 🪙${fmt(n.cost)} · เวลา ${fmtT(n.time)}</div>
+      <div class="btns"><button class="btn pri" data-a="nurStart" data-cost="${n.cost}" ${S.coins>=n.cost?'':'disabled'}>เริ่มผสม</button><button class="btn" data-a="nurCancel">ยกเลิก</button></div>`;
+    }else if(S.nur.a||S.nur.b)body+=`<div class="btns"><button class="btn" data-a="nurCancel">ยกเลิก</button></div>`;
+    else body+=`<div class="sub">เลือกสัตว์ แล้วกด "ใส่โรงผสม" 2 ตัว (ถ้าดึงจากฟาร์ม ช่องนั้นจะหยุดผลิตจนผสมเสร็จ)</div>`;
+    const tr=Object.entries(S.tried).slice(-8).reverse().map(([k,r])=>{const [x,y]=k.split('-');return`<li>${SP[x].em}${SP[x].n} + ${SP[y].em}${SP[y].n} → ${SP[r].em}${SP[r].n}</li>`}).join('');
+    return`<h3>โรงผสม</h3>${body}${tr?`<div class="sub">ประวัติ</div><ul class="list">${tr}</ul>`:''}`;
+  }
+  if(tab==='exp'){
+    const zs=ZONES.map((z,i)=>`<button class="btn zone ${zoneSel===i?'on':''}" data-a="zone" data-v="${i}" ${codexN()<z.need?'disabled':''}>${z.n}${codexN()<z.need?` (${z.need})`:''}</button>`).join('');
+    let body='';
+    if(S.exp){
+      const e=S.exp;
+      body=`<div>กำลังสำรวจ${ZONES[e.zone].n}: ${e.crew.map(u=>{const f=find(u);return f?SP[f.a.sp].em:''}).join('')}</div>
+      <div class="bar" data-s="${e.start}" data-e="${e.end}"><i></i></div><div>กลับในอีก <b class="t" data-s="${e.start}" data-e="${e.end}"></b></div>`;
+    }else{
+      const crew=S.crew.map(u=>{const f=find(u);return f?`<button class="btn" data-a="crewDel" data-v="${u}">${SP[f.a.sp].em} ${SP[f.a.sp].n} ✕</button>`:''}).join('');
+      const z=ZONES[zoneSel];
+      body=`<div class="sub">ลูกเรือ (สูงสุด 3 ตัวจากช่องเก็บ ลูกเรือมากและหายากขึ้น = ของดีขึ้น)</div><div class="btns">${crew||'<span class="sub">ยังไม่มี</span>'}</div>
+      <div class="row">ใช้เวลา ${fmtT(z.dur*(1-haste('S')))}</div>
+      <button class="btn pri" data-a="expStart" ${S.crew.length&&codexN()>=z.need?'':'disabled'}>ออกเดินทาง</button>`;
+    }
+    return`<h3>สำรวจ</h3><div class="btns">${zs}</div>${body}<div class="sub">โซนสูงปลดล็อกตามจำนวนสัตว์ที่ค้นพบ (ตอนนี้ ${codexN()}/27)</div>`;
+  }
+  if(tab==='codex'){
+    const cells=SP.map((s,i)=>{
+      if(S.codex[i])return`<div class="cell" style="--rc:var(--r${s.rar})"><span class="em">${s.em}</span><span class="nm">${s.n}</span><span class="meta">${S.shiny[i]?'✨':''}</span><span class="hintline">${s.par?SP[s.par[0]].n+'+'+SP[s.par[1]].n:'เจอในธรรมชาติ'}</span></div>`;
+      let h='';
+      if(s.par){const k=[...s.par].sort((a,b)=>a-b).join('-');
+        if(S.known[k])h=`${SP[s.par[0]].n}+${SP[s.par[1]].n}`;
+        else{const own=s.par.find(p=>S.codex[p]);if(own!==undefined)h=`ใช้ ${SP[own].n} + ?`}}
+      return`<div class="cell dim" style="--rc:var(--r${s.rar})"><span class="em">❓</span><span class="nm">${RAR[s.rar]}</span><span class="meta"></span><span class="hintline">${h||'ยังไม่มีเบาะแส'}</span></div>`;
+    }).join('');
+    return`<h3>สมุดภาพ ${codexN()}/27 · ✨ ${Object.keys(S.shiny).length}</h3><div class="grid">${cells}</div>`;
+  }
+  if(tab==='shop'){
+    return`<h3>อัปเกรด</h3>
+    <div class="row"><div style="flex:1">ตัวคูณฟาร์ม +25% (เลเวล ${S.farmLvl})</div><button class="btn" data-a="upFarm" data-cost="${upCost()}" ${S.coins>=upCost()?'':'disabled'}>🪙${fmt(upCost())}</button></div>
+    <div class="row"><div style="flex:1">ขยายช่องเก็บ +4 (เลเวล ${S.stashLvl})</div><button class="btn" data-a="upStash" data-cur="e" data-cost="${stCost()}" ${S.ess>=stCost()?'':'disabled'}>🌿${stCost()}</button></div>
+    <div class="sub">แก่นธรรมชาติ 🌿 ได้จากการปล่อยสัตว์และสำรวจโซนสูง · เพดานออฟไลน์ตอนนี้ ${offCap().toFixed(1)} ชม.</div>`;
+  }
+  // lab
+  const sp_=[1,10,60,300].map(x=>`<button class="btn ${speed===x?'pri':''}" data-a="speed" data-v="${x}">×${x}</button>`).join('');
+  const rep=report();
+  return`<h3>ห้องทดสอบ</h3><div class="sub">ใช้เร่งเวลา/โกงเพื่อลองให้ถึงช่วงท้ายเกมเร็วๆ ตอนเล่นจริงใช้ ×1</div>
+  <div class="btns">${sp_}</div>
+  <div class="btns"><button class="btn" data-a="cheat" data-v="c">โกงเหรียญ ×2</button><button class="btn" data-a="cheat" data-v="e">+20 🌿</button><button class="btn" data-a="cheat" data-v="t">ข้ามเวลา 1 ชม.</button><button class="btn" data-a="reset">เริ่มใหม่</button></div>
+  <div class="sub">รายงานการเล่น (กดคัดลอกแล้วส่งให้ผู้พัฒนา)</div><textarea id="rep" readonly>${rep}</textarea><button class="btn" data-a="copy">คัดลอกรายงาน</button>`;
+}
+function report(){
+  const roles={P:0,B:0,Br:0,S:0,K:0};let used=0;
+  for(let i=0;i<S.unlocked;i++){const a=S.farm[i];if(a){used++;SP[a.sp].roles.forEach(r=>roles[r]++)}}
+  return[`เวลาในเกม ${fmtT(S.t)} · การกด ${S.acts} · ผสม ${S.nursed} · สำรวจ ${S.explored}`,
+    `ค้นพบ ${codexN()}/27 สี✨ ${Object.keys(S.shiny).length} · ช่องฟาร์ม ${S.unlocked} · ช่องเก็บ ${S.stash.length}/${stashCap()}`,
+    `บทบาทในฟาร์ม ${Object.entries(roles).map(([k,v])=>k+':'+v).join(' ')} · เหรียญ ${fmt(S.coins)} · ${fmt(rate())}/วิ`,
+    '--- เหตุการณ์ล่าสุด ---',...S.log.slice(-25).map(l=>`[${fmtT(l.t)}] ${l.m}`)].join('\n');
+}
+function render(){
+  const tabs=[['stash',`ช่องเก็บ`],['nur','โรงผสม'],['exp','สำรวจ'],['codex','สมุด'],['shop','ร้าน'],['lab','ทดสอบ']];
+  const nurDone=S.nur.end!=null&&S.t>=S.nur.end,expDone=S.exp&&S.t>=S.exp.end;
+  document.getElementById('app').innerHTML=`
+  <div class="box"><div class="top"><div class="coins">🪙 <span id="coins">${fmt(S.coins)}</span></div><div class="res"><span class="rate" id="rate">+${fmt(rate())}/วิ</span><span>🌿 ${S.ess}</span></div></div>
+    <div class="sub">เพดานออฟไลน์ ${offCap().toFixed(1)} ชม.${speed>1?` · <b class="badge">เร่งเวลา ×${speed}</b>`:''}</div>
+    <div class="msgs">${S.msgs.map(m=>`<div>${m}</div>`).join('')}</div></div>
+  ${hintHTML()}
+  <div class="farm">${Array.from({length:12},(_,i)=>slotHTML(i)).join('')}</div>
+  ${actionHTML()}
+  <div><div class="tabs">${tabs.map(([k,n])=>`<button class="tab ${tab===k?'on':''}" data-a="tab" data-v="${k}">${n}${(k==='nur'&&nurDone)||(k==='exp'&&expDone)?' <span class="badge">●</span>':''}</button>`).join('')}</div>
+  <div class="box panel">${panelHTML()}</div></div>`;
+  tickUI();
+}
+document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(el&&!el.disabled)act(el.dataset.a,el.dataset.v)});
+
+/* ---------- boot ---------- */
+if(!load())init();
+if(!S.nur)S.nur={a:null,b:null,end:null};
+const el=(Date.now()-S.lastReal)/1000;
+if(el>10){
+  const cap=offCap()*3600,g=Math.min(el,cap)*rate();S.coins+=g;S.t+=el;
+  log(`ระหว่างที่ไม่อยู่ ${fmtT(el)}: เหรียญ +${fmt(g)}`);
+}
+step();render();
+setInterval(loop,250);
+window.__G={get S(){return S},act,render,setSel:v=>{sel=v},SP,RC,rate,slotRate,report};
+})();
+</script>

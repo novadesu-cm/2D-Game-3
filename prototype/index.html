@@ -491,6 +491,7 @@ function act(a,v){
   case'spr':S.sprOn=!S.sprOn;break;
   case'up':{const u=UPS.find(x=>x.k===v);if(u&&U(u.k)<u.max&&(!u.need||U(u.need))&&S.coins>=upCost(u)){S.coins-=upCost(u);S.u[u.k]=U(u.k)+1;log(`อัปเกรด ${u.n} → ${U(u.k)}`);if(u.k==='spr')S.sprOn=true}break}
   case'upStash':if(S.ess>=stCost()){S.ess-=stCost();S.stashLvl++;log('ขยายช่องเก็บ +4')}break;
+  case'upcat':upCat=v;break;
   case'speed':speed=v;break;
   case'cheat':if(v==='c')S.coins+=Math.max(10000,S.coins);else if(v==='e')S.ess+=20;else if(v==='t')simSpan(3600,1);break;
   case'reset':try{localStorage.removeItem(KEY)}catch(e){}init();sel=null;tab='';break;
@@ -564,15 +565,20 @@ function toolbarHTML(){
   ${U('spr')?`<button class="btn ${S.sprOn?'on':''}" data-a="spr">💦 สปริงเกอร์ ${S.sprOn?'เปิด':'ปิด'}</button>`:''}
   <span class="sub">${U('drone')?'🚁':''} ${U('chef')?'👨‍🍳':''} ${U('cash')?'🧾':''}</span></div>`;
 }
+const UCATS=[['collect','🧺 เก็บ'],['cook','🍲 ปรุง'],['sell','💰 ขาย'],['water','💦 น้ำ'],['animal','🐾 สัตว์']];
+const UCAT={drone:'collect',bag:'collect',pile:'collect',pot:'cook',cook:'cook',chef:'cook',show:'sell',price:'sell',cash:'sell',cashSpd:'sell',spr:'water',pump:'water',tank:'water',aRel:'animal',aExp:'animal',aNur:'animal'};
+let upCat='collect';
+const canBuy=u=>U(u.k)<u.max&&(!u.need||U(u.need))&&S.coins>=upCost(u);
 function upgradesHTML(){
-  const rows=UPS.map(u=>{
+  const tabs=UCATS.map(([k,n])=>{const dot=UPS.some(u=>UCAT[u.k]===k&&canBuy(u))||(k==='animal'&&S.ess>=stCost());return`<button class="tab ${upCat===k?'on':''}" data-a="upcat" data-v="${k}">${n}${dot?' <span class="badge">●</span>':''}</button>`}).join('');
+  const rows=UPS.filter(u=>UCAT[u.k]===upCat).map(u=>{
     const l=U(u.k),maxed=l>=u.max,locked=u.need&&!U(u.need),c=upCost(u);
     return`<div class="line"><span class="l">${u.n} <span class="sub">Lv.${l}${u.max>1?'/'+u.max:''}</span><br><span class="sub">${locked?'ต้องซื้ออันก่อนหน้าก่อน':u.d()}</span></span>
     ${maxed?'<span class="sub">เต็ม</span>':`<button class="btn" data-a="up" data-v="${u.k}" data-cost="${c}" ${locked||S.coins<c?'disabled':''}>🪙${fmt(c)}</button>`}</div>`;
   }).join('');
-  return`<h3>อัปเกรด</h3>${rows}
-  <div class="line"><span class="l">🌿 ขยายช่องเก็บสัตว์ +4 <span class="sub">Lv.${S.stashLvl}</span></span><button class="btn" data-a="upStash" data-cur="e" data-cost="${stCost()}" ${S.ess>=stCost()?'':'disabled'}>🌿${stCost()}</button></div>
-  <div class="sub">แก่นธรรมชาติ 🌿 ได้จากการปล่อยสัตว์และสำรวจโซนสูง · เพดานออฟไลน์ ${offCap().toFixed(1)} ชม. (อัตโนมัติทำงานตอนปิดเกม ส่วนของที่ต้องกดเองจะค้างไว้)</div>`;
+  const ess=upCat==='animal'?`<div class="line"><span class="l">🌿 ขยายช่องเก็บสัตว์ +4 <span class="sub">Lv.${S.stashLvl}</span><br><span class="sub">แก่นธรรมชาติได้จากการปล่อยสัตว์และสำรวจโซนสูง</span></span><button class="btn" data-a="upStash" data-cur="e" data-cost="${stCost()}" ${S.ess>=stCost()?'':'disabled'}>🌿${stCost()}</button></div>`:'';
+  return`<div class="tabs">${tabs}</div><div>${rows}${ess}</div>
+  <div class="sub">เพดานออฟไลน์ ${offCap().toFixed(1)} ชม. · ระบบอัตโนมัติทำงานตอนปิดเกม ส่วนของที่ต้องกดเองจะค้างไว้</div>`;
 }
 function panelHTML(){
   if(tab==='up')return upgradesHTML();

@@ -181,7 +181,7 @@ const KEY='amf_proto_v3';
 
 /* ---------- state ---------- */
 let S, sel=null, tab='', zoneSel=0, speed=1, pressed=false;
-const fresh=()=>({v:3,t:0,coins:0,ess:0,unlocked:3,stashLvl:0,uid:1,farm:Array(12).fill(null),stash:[],
+const fresh=()=>({v:3,t:0,coins:0,ess:0,unlocked:3,stashLvl:0,uid:1,farm:Array(12).fill(null),stash:[],away:[],
   codex:{},shiny:{},known:{},tried:{},nur:{a:null,b:null,end:null},crew:[],exp:null,pity:0,acts:0,explored:0,nursed:0,
   bag:{},draft:[],pots:[null,null,null,null],counter:{},dishes:{},u:{},water:0,sprOn:true,demand:[],demandEnd:0,
   droneT:0,cashT:0,chefWait:0,sales:[],sold:0,earned:0,mCollect:0,mCook:0,mSell:0,aCollect:0,aCook:0,aSell:0,
@@ -201,7 +201,7 @@ const sp=a=>SP[a.sp], rar=a=>SP[a.sp].rar, has=(a,r)=>SP[a.sp].roles.includes(r)
 const mult=a=>STAR[a.star-1]*(a.shiny?1.5:1);
 const fmt=n=>{if(n<1000)return n<10&&n%1?n.toFixed(1):Math.floor(n)+'';const u=['K','M','B','T','Qa'];let i=-1;while(n>=1000&&i<u.length-1){n/=1000;i++}return n.toFixed(n<10?2:n<100?1:0)+u[i]};
 const fmtT=s=>{s=Math.max(0,Math.ceil(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return h?`${h}ชม.${String(m).padStart(2,'0')}น.`:`${m}:${String(x).padStart(2,'0')}`};
-const find=uid=>{let i=S.farm.findIndex(a=>a&&a.id===uid);if(i>=0)return{a:S.farm[i],loc:'farm',i};i=S.stash.findIndex(a=>a.id===uid);return i>=0?{a:S.stash[i],loc:'stash',i}:null};
+const find=uid=>{let i=S.farm.findIndex(a=>a&&a.id===uid);if(i>=0)return{a:S.farm[i],loc:'farm',i};i=S.stash.findIndex(a=>a.id===uid);if(i>=0)return{a:S.stash[i],loc:'stash',i};i=S.away.findIndex(a=>a.id===uid);return i>=0?{a:S.away[i],loc:'away',i}:null};
 const nb=i=>{const r=(i/4)|0,c=i%4,o=[];if(r>0)o.push(i-4);if(r<2)o.push(i+4);if(c>0)o.push(i-1);if(c<3)o.push(i+1);return o};
 const active=i=>{const a=S.farm[i];return a&&!a.busy&&i<S.unlocked?a:null};
 const boostOf=i=>{let b=0;for(const n of nb(i)){const x=active(n);if(x&&has(x,'B'))b+=BOOST[rar(x)]*mult(x)}return b};
@@ -362,7 +362,7 @@ function nurStart(){
   n.A.busy=n.B.busy='nur';S.nursed++;S.lastPair=[n.A.sp,n.B.sp];
 }
 function nurFinish(){
-  const n=S.nur;[n.a,n.b].forEach(u=>{const f=find(u);if(f)f.a.busy=null});
+  const n=S.nur;[n.a,n.b].forEach(u=>{const f=find(u);if(f)giveBack(f.a)});
   const a=mk(n.res);a.shiny=n.shiny;const isRecipe=RC[n.key]===n.res;
   S.stash.push(a);discover(n.res,n.shiny);S.tried[n.key]=n.res;
   if(isRecipe)S.known[n.key]=1;
@@ -379,7 +379,7 @@ function expStart(){
   S.crew=[];S.explored++;S.lastZone=zoneSel;
 }
 function expFinish(){
-  const e=S.exp,z=e.zone;e.crew.forEach(u=>{const f=find(u);if(f)f.a.busy=null});
+  const e=S.exp,z=e.zone;e.crew.forEach(u=>{const f=find(u);if(f)giveBack(f.a)});
   const n=1+Math.floor(e.crew.length/2);
   for(let k=0;k<n;k++){
     const pool=SP.map((s,i)=>i).filter(i=>SP[i].rar<=z);
@@ -440,7 +440,19 @@ function tickUI(){
 }
 
 /* ---------- actions ---------- */
-function clearPrep(uid){const f=find(uid);if(f&&f.a.busy==='prep')f.a.busy=null}
+/* animals in the nursery / on an expedition leave the farm and the stash, and go back to where they came from */
+function takeAway(a){
+  const i=S.farm.indexOf(a);
+  if(i>=0){S.farm[i]=null;a.home={loc:'farm',i}}
+  else{const j=S.stash.indexOf(a);if(j>=0)S.stash.splice(j,1);a.home={loc:'stash'}}
+  if(!S.away.includes(a))S.away.push(a);
+}
+function giveBack(a){
+  const j=S.away.indexOf(a);a.busy=null;if(j<0)return;
+  S.away.splice(j,1);const h=a.home;delete a.home;
+  if(h&&h.loc==='farm'&&h.i<S.unlocked&&!S.farm[h.i])S.farm[h.i]=a;else S.stash.push(a);
+}
+function clearPrep(uid){const f=find(uid);if(f&&f.a.busy==='prep')giveBack(f.a)}
 function bagAdd(k,n){S.bag[k]=(S.bag[k]||0)+n;if(S.bag[k]<=0)delete S.bag[k]}
 function act(a,v){
   S.acts++;v=v===undefined?v:isNaN(+v)?v:+v;
@@ -458,10 +470,10 @@ function act(a,v){
     break}
   case'toStash':if(cur&&cur.loc==='farm'&&!cur.a.busy&&S.stash.length<stashCap()){S.farm[cur.i]=null;S.stash.push(cur.a)}break;
   case'toFarm':if(cur&&cur.loc==='stash'&&!cur.a.busy){const i=S.farm.findIndex((x,j)=>!x&&j<S.unlocked);if(i>=0){S.stash.splice(cur.i,1);S.farm[i]=cur.a}}break;
-  case'nurPut':if(cur&&!cur.a.busy){const k=S.nur.a==null?'a':S.nur.b==null?'b':null;if(k&&S.nur.end==null){S.nur[k]=cur.a.id;cur.a.busy='prep'}}break;
+  case'nurPut':if(cur&&!cur.a.busy){const k=S.nur.a==null?'a':S.nur.b==null?'b':null;if(k&&S.nur.end==null){S.nur[k]=cur.a.id;cur.a.busy='prep';takeAway(cur.a)}}break;
   case'nurCancel':if(S.nur.end==null){clearPrep(S.nur.a);clearPrep(S.nur.b);S.nur={a:null,b:null,end:null}}break;
   case'nurStart':nurStart();break;
-  case'crewAdd':if(cur&&cur.loc==='stash'&&!cur.a.busy&&S.crew.length<3){S.crew.push(cur.a.id);cur.a.busy='prep'}break;
+  case'crewAdd':if(cur&&cur.loc==='stash'&&!cur.a.busy&&S.crew.length<3){S.crew.push(cur.a.id);cur.a.busy='prep';takeAway(cur.a)}break;
   case'crewDel':if(!S.exp){clearPrep(v);S.crew=S.crew.filter(u=>u!==v)}break;
   case'zone':zoneSel=v;break;
   case'expStart':expStart();break;
@@ -649,7 +661,7 @@ function nurCard(){
     info=`<span class="sub" style="flex:1">${RAR[n.tier]} · 🪙${fmt(n.cost)} · ${fmtT(n.time)}</span>`;
     btns=`<button class="btn sm pri" data-a="nurStart" data-cost="${n.cost}" ${S.coins>=n.cost?'':'disabled'}>เริ่มผสม</button><button class="btn sm" data-a="nurCancel">ยกเลิก</button>`;
   }else if(S.nur.a||S.nur.b){info='<span style="flex:1"></span>';btns=`<button class="btn sm" data-a="nurCancel">ยกเลิก</button>`}
-  else info=`<span class="sub" style="flex:1">ลากสัตว์ 2 ตัวมาวางที่นี่</span>`;
+  else info=`<span class="sub" style="flex:1">ลากสัตว์ 2 ตัวมาวางที่นี่ (ตัวจะออกจากฟาร์มจนกว่าจะเสร็จ)</span>`;
   const rp=S.lastPair&&S.nur.end==null&&!S.nur.a&&!S.nur.b?`<button class="btn sm" data-a="nurRepeat">ซ้ำ ${SP[S.lastPair[0]].em}+${SP[S.lastPair[1]].em}</button>`:'';
   const last=Object.entries(S.tried).slice(-1).map(([k,r])=>{const [x,y]=k.split('-');return`ล่าสุด ${SP[x].em}+${SP[y].em} → ${SP[r].em}${RC[k]===undefined&&x!==y?' (ไม่ใช่สูตร)':''}`})[0]||'';
   return`<div class="box st" data-drop="nur"><div class="row"><h3>💞 โรงผสม</h3><span style="flex:1"></span>${autoBtn('nur','aNur')}</div>
@@ -664,7 +676,7 @@ function expCard(){
     body=`<div>${ZONES[e.zone].n}: ${e.crew.map(u=>{const f=find(u);return f?SP[f.a.sp].em:''}).join('')}</div><div class="bar" data-s="${e.start}" data-e="${e.end}"><i></i></div><div class="sub">กลับในอีก <b class="t" data-s="${e.start}" data-e="${e.end}"></b></div>`;
   }else{
     const z=ZONES[zoneSel],crew=[0,1,2].map(i=>{const f=S.crew[i]&&find(S.crew[i]);return f?cell(f.a,'sel',f.a.id,'',true):`<div class="cell sm empty">＋</div>`}).join('');
-    body=`<div class="pair">${crew}<span class="sub" style="flex:1">ลากลูกเรือจากช่องเก็บ (≤3)</span></div>
+    body=`<div class="pair">${crew}<span class="sub" style="flex:1">ลากลูกเรือจากช่องเก็บ (≤3) ออกไปจนกว่าจะกลับ</span></div>
     <div class="btns"><button class="btn sm pri" data-a="expStart" ${S.crew.length&&codexN()>=z.need?'':'disabled'}>ไป ${fmtT(z.dur*(1-haste('S')))}</button><button class="btn sm" data-a="expRepeat">ส่งซ้ำ</button></div>`;
   }
   return`<div class="box st" data-drop="crew"><div class="row"><h3>🧭 สำรวจ</h3><span class="sub">${ZONES[zoneSel].n}</span><span style="flex:1"></span>${autoBtn('exp','aExp')}</div><div class="btns" style="margin-bottom:6px">${zs}</div>${body}</div>`;
@@ -735,18 +747,19 @@ function tryNursery(a,b,manual){
   if(S.nur.a||S.nur.b){[S.nur.a,S.nur.b].forEach(u=>u&&clearPrep(u));S.nur={a:null,b:null,end:null}}
   const pool=S.stash.filter(x=>!x.busy),A=pool.find(x=>x.sp===a),B=pool.find(x=>x.sp===b&&x!==A);
   if(!A||!B)return false;
-  A.busy=B.busy='prep';S.nur.a=A.id;S.nur.b=B.id;
+  const tier=A.sp===B.sp?rar(A):Math.min(4,Math.max(rar(A),rar(B))+1);
+  if(!manual&&S.coins<NCOST[tier])return false;   // auto mode: don't shuffle animals around if the fee can't be paid
+  A.busy=B.busy='prep';takeAway(A);takeAway(B);S.nur.a=A.id;S.nur.b=B.id;
   const n=nurInfo();
   if(n&&S.coins>=n.cost){nurStart();return true}
-  if(manual)return true;
-  unprep(A.id);unprep(B.id);return false;
+  return true;
 }
 function autoExp(){
   if(S.exp)return false;
   const pool=S.stash.filter(x=>!x.busy&&!x.shiny&&x.star===1);if(!pool.length)return false;
   const cnt={};S.stash.forEach(x=>cnt[x.sp]=(cnt[x.sp]||0)+1);
   const crew=pool.sort((x,y)=>(cnt[y.sp]>1?1:0)-(cnt[x.sp]>1?1:0)||rar(x)-rar(y)).slice(0,2);
-  S.crew.forEach(clearPrep);S.crew=crew.map(x=>{x.busy='prep';return x.id});
+  S.crew.forEach(clearPrep);S.crew=crew.map(x=>{x.busy='prep';takeAway(x);return x.id});
   let z=Math.min(S.lastZone,4);while(z>0&&codexN()<ZONES[z].need)z--;zoneSel=z;
   expStart();return true;
 }
@@ -760,11 +773,11 @@ function doDrop(src,el){
   if(src.t==='animal'){
     const f=find(src.v);if(!f)return;const a=f.a;
     if(a.busy&&a.busy!=='prep'){log(`${sp(a).n} กำลังทำงานอยู่ ย้ายไม่ได้`);return}
-    if(k==='nur'){if(!a.busy&&S.nur.end==null&&!(S.nur.a&&S.nur.b)){S.nur[S.nur.a==null?'a':'b']=a.id;a.busy='prep'}return}
+    if(k==='nur'){if(!a.busy&&S.nur.end==null&&!(S.nur.a&&S.nur.b)){S.nur[S.nur.a==null?'a':'b']=a.id;a.busy='prep';takeAway(a)}return}
     if(k==='crew'){
       if(a.busy)return;
       if(f.loc!=='stash'){log('ลูกเรือต้องมาจากช่องเก็บสัตว์');return}
-      if(!S.exp&&S.crew.length<3){S.crew.push(a.id);a.busy='prep'}return;
+      if(!S.exp&&S.crew.length<3){S.crew.push(a.id);a.busy='prep';takeAway(a)}return;
     }
     if(a.busy==='prep')unprep(a.id);
     if(k==='farm')placeFarm(a.id,+arg);
@@ -824,6 +837,7 @@ document.addEventListener('click',e=>{if(suppress)return;if(e.target.classList&&
 /* ---------- boot ---------- */
 if(!load())init();
 if(!S.nur)S.nur={a:null,b:null,end:null};
+if(!S.away)S.away=[];
 {
   const el=(Date.now()-S.lastReal)/1000;
   if(el>10){

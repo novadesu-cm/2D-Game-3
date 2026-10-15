@@ -133,6 +133,8 @@ function pushStash(a){
 }
 const wpick=(arr,w)=>{let t=0;const ws=arr.map(w);ws.forEach(x=>t+=x);let r=Math.random()*t;for(let i=0;i<arr.length;i++){r-=ws[i];if(r<=0)return arr[i]}return arr[arr.length-1]};
 const codexN=()=>Object.keys(S.codex).length;
+// duplicates beyond the best 3 of each species in the stash (shiny and busy animals are never included)
+const extras=()=>{const by={};S.stash.filter(a=>!a.busy&&!a.shiny).forEach(a=>(by[a.sp]=by[a.sp]||[]).push(a));let out=[];for(const k in by){by[k].sort((x,y)=>y.star-x.star);out=out.concat(by[k].slice(3))}return out};
 
 /* ---------- nursery ---------- */
 function nurInfo(){
@@ -248,6 +250,7 @@ function act(a,v){
       cur.a.star++;cur.a.shiny=cur.a.shiny||o.slice(0,2).some(x=>x.shiny);log(`รวมดาว ${sp(cur.a).n} เป็น ★${cur.a.star}`)}}break;
   case'release':if(cur&&!cur.a.busy){const a=cur.a;S.coins+=PROD[rar(a)]*a.star*20;S.ess+=ESS[rar(a)]*a.star;
     if(cur.loc==='farm')S.farm[cur.i]=null;else S.stash.splice(cur.i,1);log(`ปล่อย ${sp(a).n}`);sel=null}break;
+  case'bulk':{const ex=extras();ex.forEach(a=>{S.coins+=PROD[rar(a)]*a.star*20;S.ess+=ESS[rar(a)]*a.star;const i=S.stash.indexOf(a);if(i>=0)S.stash.splice(i,1);if(sel===a.id)sel=null});if(ex.length)log(`ปล่อยตัวซ้ำ ${ex.length} ตัว`);break}
   case'upFarm':if(S.coins>=upCost()){S.coins-=upCost();S.farmLvl++;log(`อัปเกรดฟาร์มเป็นเลเวล ${S.farmLvl}`)}break;
   case'upStash':if(S.ess>=stCost()){S.ess-=stCost();S.stashLvl++;log('ขยายช่องเก็บ +4')}break;
   case'sort':S.stash.sort((x,y)=>rar(y)-rar(x)||x.sp-y.sp||y.star-x.star);break;
@@ -301,7 +304,7 @@ function actionHTML(){
 }
 function hintHTML(){
   let h='';
-  if(!S.nursed&&!S.nur.end)h='เริ่มที่นี่: เลือก 🐔 ไก่ → "ใส่โรงผสม" → เลือก 🦆 เป็ด → "ใส่โรงผสม" → แท็บโรงผสม กด "เริ่มผสม" (50 🪙 รอ 2 นาที เร่งเวลาได้ที่แท็บทดสอบ)';
+  if(!S.nursed&&!S.nur.end)h='เริ่มที่นี่: เลือก 🐔 ไก่ → "ใส่โรงผสม" → เลือก 🦆 เป็ด → "ใส่โรงผสม" → แท็บโรงผสม กด "เริ่มผสม" (50 🪙 รอ 2 นาที เร่งเวลาได้ที่แท็บทดสอบ) · สูตรตายตัว สลับพ่อแม่ก็ได้ผลเหมือนกัน ทุกครั้งที่ลองจะบันทึกในประวัติ';
   else if(S.unlocked===3&&S.coins>=slotCost())h='ซื้อช่องฟาร์มช่องที่ 4 ได้แล้ว';
   else if(!S.explored)h='ลองส่งสำรวจ: เลือกสัตว์ในช่องเก็บ → "เป็นลูกเรือ" → แท็บสำรวจ';
   return h?`<div class="box hint">${h}</div>`:'';
@@ -310,7 +313,7 @@ function panelHTML(){
   if(tab==='stash'){
     const cap=stashCap(),cells=S.stash.map(a=>cell(a,'sel',a.id));
     for(let i=S.stash.length;i<cap;i++)cells.push(`<div class="cell empty dim">·</div>`);
-    return`<div class="row"><h3>ช่องเก็บสัตว์ ${S.stash.length}/${cap}</h3><button class="btn" data-a="sort">จัดเรียง</button></div><div class="grid">${cells.join('')}</div>`;
+    return`<div class="row"><h3>ช่องเก็บสัตว์ ${S.stash.length}/${cap}</h3><span style="flex:1"></span><button class="btn" data-a="bulk" ${extras().length?'':'disabled'}>ปล่อยตัวซ้ำ (${extras().length})</button><button class="btn" data-a="sort">จัดเรียง</button></div><div class="grid">${cells.join('')}</div>`;
   }
   if(tab==='nur'){
     const n=nurInfo(),slot=(u,l)=>{const f=u&&find(u);return f?cell(f.a,'sel',f.a.id):`<div class="cell empty">${l}</div>`};
@@ -324,7 +327,7 @@ function panelHTML(){
       <div class="btns"><button class="btn pri" data-a="nurStart" data-cost="${n.cost}" ${S.coins>=n.cost?'':'disabled'}>เริ่มผสม</button><button class="btn" data-a="nurCancel">ยกเลิก</button></div>`;
     }else if(S.nur.a||S.nur.b)body+=`<div class="btns"><button class="btn" data-a="nurCancel">ยกเลิก</button></div>`;
     else body+=`<div class="sub">เลือกสัตว์ แล้วกด "ใส่โรงผสม" 2 ตัว (ถ้าดึงจากฟาร์ม ช่องนั้นจะหยุดผลิตจนผสมเสร็จ)</div>`;
-    const tr=Object.entries(S.tried).slice(-8).reverse().map(([k,r])=>{const [x,y]=k.split('-');return`<li>${SP[x].em}${SP[x].n} + ${SP[y].em}${SP[y].n} → ${SP[r].em}${SP[r].n}</li>`}).join('');
+    const tr=Object.entries(S.tried).slice(-8).reverse().map(([k,r])=>{const [x,y]=k.split('-');return`<li>${SP[x].em}${SP[x].n} + ${SP[y].em}${SP[y].n} → ${SP[r].em}${SP[r].n}${RC[k]===undefined&&x!==y?' <i>(ไม่ใช่สูตร)</i>':''}</li>`}).join('');
     return`<h3>โรงผสม</h3>${body}${tr?`<div class="sub">ประวัติ</div><ul class="list">${tr}</ul>`:''}`;
   }
   if(tab==='exp'){

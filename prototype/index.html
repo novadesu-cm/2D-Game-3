@@ -84,6 +84,15 @@ textarea{width:100%;min-height:120px;background:var(--panel);color:var(--fg);bor
 .line:last-child{border-bottom:0}
 .line .l{flex:1;min-width:0}
 .tag{font-size:11px;color:var(--warn);font-weight:600}
+[data-drag]{touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+.dz{border:2px dashed var(--line);border-radius:8px;padding:8px}
+.dropok{outline:2px dashed var(--accent);outline-offset:1px}
+.hot{outline:3px solid var(--accent)!important;background:color-mix(in srgb,var(--accent) 16%,var(--panel))!important}
+.ghost{position:fixed;z-index:100;pointer-events:none;font-size:36px;line-height:1;transform:translate(-50%,-60%);filter:drop-shadow(0 3px 4px rgba(0,0,0,.35))}
+#rz{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:90;background:var(--warn);color:#fff;border-radius:12px;padding:14px 22px;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.3)}
+#rz.hot{background:#c0392b}
+.st h3{margin-bottom:6px}
+.sell{text-align:center;color:var(--muted);font-size:13px}
 </style>
 
 <div id="app"></div>
@@ -118,11 +127,12 @@ const ZONES=[{n:'ทุ่งหญ้า',need:0,dur:30,coin:40},{n:'ลำธ�
 const KEY='amf_proto_v3';
 
 /* ---------- state ---------- */
-let S, sel=null, tab='stash', zoneSel=0, speed=1, pressed=false;
+let S, sel=null, tab='', zoneSel=0, speed=1, pressed=false;
 const fresh=()=>({v:3,t:0,coins:0,ess:0,unlocked:3,stashLvl:0,uid:1,farm:Array(12).fill(null),stash:[],
   codex:{},shiny:{},known:{},tried:{},nur:{a:null,b:null,end:null},crew:[],exp:null,pity:0,acts:0,explored:0,nursed:0,
   bag:{},draft:[],pots:[null,null,null,null],counter:{},dishes:{},u:{},water:0,sprOn:true,demand:[],demandEnd:0,
   droneT:0,cashT:0,chefWait:0,sales:[],sold:0,earned:0,mCollect:0,mCook:0,mSell:0,aCollect:0,aCook:0,aSell:0,
+  lastPair:null,lastZone:0,auto:{nur:true,exp:true,rel:true},autoT:0,
   log:[],msgs:[],lastReal:Date.now(),created:Date.now()});
 const mk=sp=>({id:S.uid++,sp,star:1,shiny:false,busy:null,prog:0,pile:0});
 function load(){try{const j=localStorage.getItem(KEY);if(j){S=JSON.parse(j);return true}}catch(e){}return false}
@@ -180,7 +190,10 @@ const UPS=[
  {k:'cashSpd',n:'⚡ แคชเชียร์ไวขึ้น',max:6,cost:l=>250*Math.pow(1.9,l),need:'cash',d:()=>`ขายทุก ${cashInt().toFixed(1)} วิ`},
  {k:'spr',n:'💦 สปริงเกอร์',max:1,cost:()=>500,d:()=>'เปิดแล้วผลผลิตเร็วขึ้น ×2 ตราบที่ยังมีน้ำ ตัวหายากกินน้ำมากกว่า'},
  {k:'pump',n:'⛲ ปั๊มน้ำเร็วขึ้น',max:8,cost:l=>150*Math.pow(1.9,l),need:'spr',d:()=>`เติม ${pumpRate().toFixed(2)}/วิ`},
- {k:'tank',n:'🛢 ถังน้ำใหญ่ขึ้น',max:8,cost:l=>100*Math.pow(1.8,l),need:'spr',d:()=>`จุ ${tankMax()}`}];
+ {k:'tank',n:'🛢 ถังน้ำใหญ่ขึ้น',max:8,cost:l=>100*Math.pow(1.8,l),need:'spr',d:()=>`จุ ${tankMax()}`},
+ {k:'aRel',n:'🧹 จัดช่องเก็บอัตโนมัติ',max:1,cost:()=>1000,d:()=>'รวมดาวเมื่อครบ 3 และปล่อยตัวซ้ำเกิน 3 ตัวเมื่อช่องเก็บใกล้เต็ม'},
+ {k:'aExp',n:'🔁 สำรวจซ้ำอัตโนมัติ',max:1,cost:()=>1500,d:()=>'ส่งตัวซ้ำ/ระดับต่ำสุดในช่องเก็บไปสำรวจโซนล่าสุดเอง'},
+ {k:'aNur',n:'🔁 ผสมซ้ำอัตโนมัติ',max:1,cost:()=>3000,d:()=>'ผสมคู่เดิมซ้ำเมื่อโรงผสมว่างและมีเงินพอ (ใช้ตัวจากช่องเก็บ)'}];
 const upCost=u=>Math.round(u.cost(U(u.k)));
 
 /* ---------- produce pipeline ---------- */
@@ -268,6 +281,13 @@ function sim(dt){
       sellDish(best,1,false);S.cashT+=cashInt();
     }
   }
+  // station automation (every ~2s)
+  S.autoT+=dt;
+  if(S.autoT>=2){S.autoT=0;
+    if(U('aRel')&&S.auto.rel&&S.stash.length>=stashCap()-1){mergeAll();releaseExtras(true)}
+    if(U('aNur')&&S.auto.nur&&S.nur.end==null&&!S.nur.a&&!S.nur.b&&S.lastPair)tryNursery(S.lastPair[0],S.lastPair[1],false);
+    if(U('aExp')&&S.auto.exp&&!S.exp&&!S.crew.length)autoExp();
+  }
   // demand + sales window
   if(S.t>=S.demandEnd)rollDemand();
   while(S.sales.length&&S.sales[0].t<S.t-180)S.sales.shift();
@@ -286,7 +306,7 @@ function nurStart(){
   S.coins-=n.cost;const key=[n.A.sp,n.B.sp].sort((a,b)=>a-b).join('-');
   let res=n.same?n.A.sp:RC[key]!==undefined?RC[key]:(Math.random()<.5?n.A.sp:n.B.sp);
   Object.assign(S.nur,{key,res,shiny:Math.random()<.05+haste('Br')*.1,start:S.t,end:S.t+n.time});
-  n.A.busy=n.B.busy='nur';S.nursed++;
+  n.A.busy=n.B.busy='nur';S.nursed++;S.lastPair=[n.A.sp,n.B.sp];
 }
 function nurFinish(){
   const n=S.nur;[n.a,n.b].forEach(u=>{const f=find(u);if(f)f.a.busy=null});
@@ -303,7 +323,7 @@ function expStart(){
   const dur=z.dur*(1-haste('S')),crew=S.crew.map(u=>find(u)).filter(Boolean);
   crew.forEach(f=>f.a.busy='exp');
   S.exp={zone:zoneSel,start:S.t,end:S.t+dur,dur,crew:crew.map(f=>f.a.id),cb:crew.reduce((s,f)=>s+rar(f.a),0)};
-  S.crew=[];S.explored++;
+  S.crew=[];S.explored++;S.lastZone=zoneSel;
 }
 function expFinish(){
   const e=S.exp,z=e.zone;e.crew.forEach(u=>{const f=find(u);if(f)f.a.busy=null});
@@ -338,6 +358,7 @@ let last=performance.now(), sv=0, lastSig='';
 const sig=()=>[bagTotal(),counterTotal(),Math.floor(S.coins),S.pots.map(p=>p?1:0).join(''),S.farm.map(a=>a?a.pile:'-').join(','),S.stash.length,S.water>0?1:0].join('|');
 function loop(){
   const now=performance.now(),dt=Math.min(600,(now-last)/1000);last=now;
+  if(pressed&&!drag&&now-pressedAt>20000)pressed=false;
   simSpan(dt*speed,.5);
   let ch=step();
   const s=sig();if(s!==lastSig&&!pressed){lastSig=s;ch=true}
@@ -372,7 +393,7 @@ function act(a,v){
   S.acts++;v=v===undefined?v:isNaN(+v)?v:+v;
   const cur=sel!=null?find(sel):null;
   switch(a){
-  case'tab':tab=v;break;
+  case'tab':tab=tab===v?'':v;break;
   case'sel':sel=sel===v?null:v;break;
   case'slot':{
     if(v>=S.unlocked){if(v===S.unlocked&&S.coins>=slotCost()){S.coins-=slotCost();S.unlocked++;log(`ซื้อช่องฟาร์มที่ ${S.unlocked}`)}break}
@@ -398,7 +419,12 @@ function act(a,v){
       cur.a.star++;cur.a.shiny=cur.a.shiny||o.slice(0,2).some(x=>x.shiny);log(`รวมดาว ${sp(cur.a).n} เป็น ★${cur.a.star}`)}}break;
   case'release':if(cur&&!cur.a.busy){const a=cur.a;S.coins+=V[rar(a)]*a.star*4;S.ess+=ESS[rar(a)]*a.star;
     if(cur.loc==='farm')S.farm[cur.i]=null;else S.stash.splice(cur.i,1);log(`ปล่อย ${sp(a).n}`);sel=null}break;
-  case'bulk':{const ex=extras();ex.forEach(a=>{S.coins+=V[rar(a)]*a.star*4;S.ess+=ESS[rar(a)]*a.star;const i=S.stash.indexOf(a);if(i>=0)S.stash.splice(i,1);if(sel===a.id)sel=null});if(ex.length)log(`ปล่อยตัวซ้ำ ${ex.length} ตัว`);break}
+  case'bulk':releaseExtras(false);break;
+  case'mergeAll':mergeAll();break;
+  case'cookAll':{if(S.draft.length>=2&&counterTotal()+S.pots.filter(Boolean).length<showCap()&&startPot(S.draft,true))S.draft=[];while(S.pots.some((p,i)=>i<potN()&&!p)&&bagTotal()>=2&&counterTotal()+S.pots.filter(Boolean).length<showCap()){const m=bestMix();if(m.length<2)break;m.forEach(x=>bagAdd(x,-1));startPot(m,true)}break}
+  case'nurRepeat':if(S.lastPair)tryNursery(S.lastPair[0],S.lastPair[1],true);break;
+  case'expRepeat':autoExp();break;
+  case'tgl':S.auto[v]=!S.auto[v];break;
   case'sort':S.stash.sort((x,y)=>rar(y)-rar(x)||x.sp-y.sp||y.star-x.star);break;
   /* produce pipeline */
   case'collectAll':collect(1e9,true);break;
@@ -414,7 +440,7 @@ function act(a,v){
   case'upStash':if(S.ess>=stCost()){S.ess-=stCost();S.stashLvl++;log('ขยายช่องเก็บ +4')}break;
   case'speed':speed=v;break;
   case'cheat':if(v==='c')S.coins+=Math.max(10000,S.coins);else if(v==='e')S.ess+=20;else if(v==='t')simSpan(3600,1);break;
-  case'reset':try{localStorage.removeItem(KEY)}catch(e){}init();sel=null;tab='stash';break;
+  case'reset':try{localStorage.removeItem(KEY)}catch(e){}init();sel=null;tab='';break;
   case'copy':{const t=document.getElementById('rep');if(t){t.select();try{navigator.clipboard.writeText(t.value)}catch(e){document.execCommand&&document.execCommand('copy')}}return}
   }
   step();lastSig=sig();render();
@@ -425,16 +451,16 @@ function extras(){const by={};S.stash.filter(a=>!a.busy&&!a.shiny).forEach(a=>(b
 /* ---------- render ---------- */
 const cell=(a,action,v,extra='')=>{
   const s=sp(a);
-  return `<button class="cell ${sel===a.id?'sel':''} ${a.busy?'busy':''}" style="--rc:var(--r${s.rar})" data-a="${action}" data-v="${v}">
+  return `<button class="cell ${sel===a.id?'sel':''} ${a.busy?'busy':''}" style="--rc:var(--r${s.rar})" data-a="${action}" data-v="${v}" data-drag="animal:${a.id}" data-gh="${s.em}">
   <span class="em">${s.em}</span><span class="nm">${s.n}</span>
   <span class="meta">${'★'.repeat(a.star)}${a.shiny?'✨':''}${a.busy?'🔒':''}</span>
   <span class="ro">${s.roles.map(r=>ROLE[r].i).join('')}</span>${extra}</button>`};
 function slotHTML(i){
   if(i<S.unlocked){const a=S.farm[i];
-    if(!a)return`<button class="cell empty" data-a="slot" data-v="${i}">＋</button>`;
+    if(!a)return`<button class="cell empty" data-a="slot" data-v="${i}" data-drop="farm:${i}">＋</button>`;
     let extra='',full='';
     if(isProducer(a)){full=a.pile>=pileCap()?'full':'';extra=`<span class="rt" id="pl${i}">📦${a.pile}/${pileCap()}</span><div class="mini"><i id="pb${i}"></i></div>`}
-    return cell(a,'slot',i,extra).replace('class="cell ',`class="cell ${full} `)}
+    return cell(a,'slot',i,extra).replace('class="cell ',`class="cell ${full} `).replace('data-a="slot"',`data-drop="farm:${i}" data-a="slot"`)}
   if(i===S.unlocked){const c=slotCost();return`<button class="cell buy ${S.coins>=c?'':'no'}" data-a="slot" data-v="${i}" data-cost="${c}">ซื้อช่อง<br>🪙${fmt(c)}</button>`}
   return`<div class="cell lock">🔒</div>`;
 }
@@ -449,9 +475,9 @@ function roleText(a){
 }
 function actionHTML(){
   const f=sel!=null?find(sel):null;
-  if(!f)return`<div class="box sub">แตะสัตว์เพื่อเลือก แล้วจะมีปุ่มให้ย้าย ผสม ส่งสำรวจ รวมดาว หรือปล่อย (แตะช่องฟาร์มว่างเพื่อวางสัตว์ที่เลือกอยู่)</div>`;
+  if(!f)return`<div class="box sub">ลากสัตว์ไปวางที่ฟาร์ม ช่องเก็บ โรงผสม หรือลูกเรือได้เลย (ลากข้ามกล่องได้ทั้งหน้า) หรือแตะสัตว์เพื่อเลือกแล้วใช้ปุ่ม</div>`;
   const a=f.a,s=sp(a),b=[];
-  if(a.busy==='prep')b.push(`<span class="sub">เตรียมอยู่ในแท็บผสม/สำรวจ (ยกเลิกที่นั่น)</span>`);
+  if(a.busy==='prep')b.push(`<span class="sub">เตรียมอยู่ในกล่องโรงผสม/สำรวจ (ลากกลับไปวางที่อื่นเพื่อยกเลิก)</span>`);
   else if(a.busy)b.push(`<span class="sub">🔒 กำลังทำงาน</span>`);
   else{
     if(f.loc==='farm')b.push(`<button class="btn" data-a="toStash" ${S.stash.length>=stashCap()?'disabled':''}>เก็บเข้าช่องเก็บ</button>`);
@@ -468,10 +494,10 @@ function hintHTML(){
   let h='';
   const piles=S.farm.reduce((n,a)=>n+(a?a.pile:0),0);
   if(!S.sold)h=piles||bagTotal()||S.draft.length||Object.keys(S.counter).length||S.pots.some(Boolean)
-    ?'ทำอาหารขาย: 🧺 เก็บทั้งหมด → แท็บ "ครัว" → ใส่ผลผลิตลงหม้อ 2–3 ชิ้น (ยิ่งหลากหลายยิ่งคุ้ม) → ปรุง → ขาย'
+    ?'ทำอาหารขาย: 🧺 เก็บทั้งหมด → ลากผลผลิตจากกระเป๋าลงหม้อ 2–3 ชิ้น (ยิ่งหลากหลายยิ่งคุ้ม) → ปรุง → ลากอาหารไปช่องขาย หรือกด "ขายทั้งหมด"'
     :'รอสักครู่ สัตว์ในฟาร์มจะทยอยผลิตของ (ไข่ นม ของป่า) เป็นกองหน้าช่อง';
-  else if(!S.nursed&&!S.nur.end)h='ผสมสัตว์: เลือก 🐔 ไก่ → "ใส่โรงผสม" → เลือก 🦆 เป็ด → "ใส่โรงผสม" → แท็บผสม กด "เริ่มผสม" · สูตรตายตัว สลับพ่อแม่ก็ได้ผลเหมือนกัน';
-  else if(!U('drone')&&S.coins>=200)h='ซื้อ 🚁 โดรนเก็บผลผลิตได้แล้ว (แท็บอัปเกรด) — ช้ากว่าการกดเก็บเอง แต่ทำงานตอนคุณไม่อยู่';
+  else if(!S.nursed&&!S.nur.end)h='ผสมสัตว์: ลาก 🐔 ไก่ และ 🦆 เป็ด ไปวางในกล่องโรงผสม แล้วกด "เริ่มผสม" · สูตรตายตัว สลับพ่อแม่ก็ได้ผลเหมือนกัน';
+  else if(!U('drone')&&S.coins>=200)h='ซื้อ 🚁 โดรนเก็บผลผลิตได้แล้ว (ปุ่มอัปเกรดด้านล่าง) — ช้ากว่าการกดเก็บเอง แต่ทำงานตอนคุณไม่อยู่';
   return h?`<div class="box hint">${h}</div>`:'';
 }
 function statusHTML(){
@@ -487,29 +513,6 @@ function toolbarHTML(){
   ${U('spr')?`<button class="btn ${S.sprOn?'on':''}" data-a="spr">💦 สปริงเกอร์ ${S.sprOn?'เปิด':'ปิด'}</button>`:''}
   <span class="sub" style="align-self:center">${U('drone')?'🚁 โดรนทำงาน':''} ${U('chef')?'👨‍🍳':''} ${U('cash')?'🧾':''}</span></div>`;
 }
-function kitchenHTML(){
-  const bagChips=Object.keys(S.bag).map(k=>`<button class="chip" data-a="draftAdd" data-v="${k}" ${S.draft.length>=3?'disabled':''}>${PR[k][2]} ${PR[k][1]} ×${S.bag[k]}</button>`).join('')||'<span class="sub">กระเป๋าว่าง กด 🧺 เก็บทั้งหมด</span>';
-  const dr=[0,1,2].map(i=>S.draft[i]!==undefined?`<button class="slot3 f" data-a="draftDel" data-v="${i}">${PR[S.draft[i]][2]}</button>`:`<div class="slot3">·</div>`).join('');
-  let prev='';if(S.draft.length>=2){const d=dishOf(S.draft);prev=`${DISH[d.key][1]} ${DISH[d.key][0]} มูลค่า ~🪙${fmt(d.val*priceMult())} · ใช้เวลา ${fmtT(COOK_PER_ITEM*S.draft.length*cookMult())}`}
-  else prev='ใส่ผลผลิตอย่างน้อย 2 ชิ้น (ตระกูลต่างกันได้ราคาดีกว่า)';
-  const free=S.pots.findIndex((p,i)=>i<potN()&&!p)>=0,room=counterTotal()+S.pots.filter(Boolean).length<showCap();
-  const pots=S.pots.slice(0,potN()).map((p,i)=>{
-    if(!p)return`<div class="line"><span class="l sub">หม้อ ${i+1}: ว่าง</span></div>`;
-    const done=S.t>=p.end;
-    return`<div class="line"><span class="l">หม้อ ${i+1}: ${p.items.map(x=>PR[x][2]).join('')}${done?' <span class="badge">รอที่ว่างในตู้โชว์</span>':''}</span>${done?'':`<div class="bar" style="width:90px" data-s="${p.start}" data-e="${p.end}"><i></i></div><b class="t" data-s="${p.start}" data-e="${p.end}"></b>`}</div>`;
-  }).join('');
-  const rows=Object.keys(S.counter).sort((a,b)=>dishAvg(b)-dishAvg(a)).map(k=>`<div class="line"><span class="l">${DISH[k][1]} ${DISH[k][0]} ×${S.counter[k].n} ${isDemand(k)?'<span class="tag">★ลูกค้าต้องการ ×1.6</span>':''}<br><span class="sub">จานละ 🪙${fmt(dishAvg(k))}</span></span><button class="btn" data-a="sellDish" data-v="${k}">ขาย</button></div>`).join('')||'<div class="sub">ยังไม่มีอาหารในตู้โชว์</div>';
-  const dem=S.demand.map(k=>`<span class="chip">${DISH[k][1]} ${DISH[k][0]}</span>`).join('');
-  return`<h3>ครัว & ร้าน</h3>
-  <div class="sub">ผลผลิตในกระเป๋า (แตะเพื่อโยนลงหม้อ)</div><div class="chips">${bagChips}</div>
-  <div class="btns"><button class="btn" data-a="sellRaw" ${bagTotal()?'':'disabled'}>ขายของดิบทั้งหมด 🪙${fmt(rawValue())} (ราคาครึ่งเดียว)</button></div>
-  <div class="slotrow">${dr}</div><div class="sub">${prev}</div>
-  <div class="btns"><button class="btn" data-a="draftAuto" ${bagTotal()+S.draft.length?'':'disabled'}>ใส่สูตรคุ้มสุดให้</button><button class="btn pri" data-a="cook" ${S.draft.length>=2&&free&&room?'':'disabled'}>ปรุง</button></div>
-  ${pots}
-  <h3>ตู้โชว์ ${counterTotal()}/${showCap()}</h3>${rows}
-  <div class="btns"><button class="btn pri" data-a="sellAll" ${counterTotal()?'':'disabled'}>ขายทั้งหมด 🪙${fmt(sellAllValue())}</button></div>
-  <div class="sub">ลูกค้าต้องการตอนนี้ (เปลี่ยนใน <b class="t" data-s="${S.demandEnd-300}" data-e="${S.demandEnd}"></b>)</div><div class="chips">${dem}</div>`;
-}
 function upgradesHTML(){
   const rows=UPS.map(u=>{
     const l=U(u.k),maxed=l>=u.max,locked=u.need&&!U(u.need),c=upCost(u);
@@ -521,44 +524,7 @@ function upgradesHTML(){
   <div class="sub">แก่นธรรมชาติ 🌿 ได้จากการปล่อยสัตว์และสำรวจโซนสูง · เพดานออฟไลน์ ${offCap().toFixed(1)} ชม. (อัตโนมัติทำงานตอนปิดเกม ส่วนของที่ต้องกดเองจะค้างไว้)</div>`;
 }
 function panelHTML(){
-  if(tab==='stash'){
-    const cap=stashCap(),cells=S.stash.map(a=>cell(a,'sel',a.id));
-    for(let i=S.stash.length;i<cap;i++)cells.push(`<div class="cell empty dim">·</div>`);
-    return`<div class="row"><h3>ช่องเก็บสัตว์ ${S.stash.length}/${cap}</h3><span style="flex:1"></span><button class="btn" data-a="bulk" ${extras().length?'':'disabled'}>ปล่อยตัวซ้ำ (${extras().length})</button><button class="btn" data-a="sort">จัดเรียง</button></div><div class="grid">${cells.join('')}</div>`;
-  }
-  if(tab==='kit')return kitchenHTML();
   if(tab==='up')return upgradesHTML();
-  if(tab==='nur'){
-    const n=nurInfo(),slot=(u,l)=>{const f=u&&find(u);return f?cell(f.a,'sel',f.a.id):`<div class="cell empty">${l}</div>`};
-    let body=`<div class="pair">${slot(S.nur.a,'พ่อ/แม่ 1')}<span>＋</span>${slot(S.nur.b,'พ่อ/แม่ 2')}</div>`;
-    if(S.nur.end!=null){
-      const wait=S.t>=S.nur.end;
-      body+=`<div class="bar" data-s="${S.nur.start}" data-e="${S.nur.end}"><i></i></div>`;
-      body+=wait?`<div class="badge">ไข่พร้อมฟัก แต่ช่องเก็บเต็ม ปล่อยหรือรวมดาวสัตว์ก่อน</div>`:`<div class="row">ฟักในอีก <b class="t" data-s="${S.nur.start}" data-e="${S.nur.end}"></b></div>`;
-    }else if(n){
-      body+=`<div class="row">ระดับผล: ${RAR[n.tier]} · ค่าใช้จ่าย 🪙${fmt(n.cost)} · เวลา ${fmtT(n.time)}</div>
-      <div class="btns"><button class="btn pri" data-a="nurStart" data-cost="${n.cost}" ${S.coins>=n.cost?'':'disabled'}>เริ่มผสม</button><button class="btn" data-a="nurCancel">ยกเลิก</button></div>`;
-    }else if(S.nur.a||S.nur.b)body+=`<div class="btns"><button class="btn" data-a="nurCancel">ยกเลิก</button></div>`;
-    else body+=`<div class="sub">เลือกสัตว์ แล้วกด "ใส่โรงผสม" 2 ตัว (ถ้าดึงจากฟาร์ม ช่องนั้นจะหยุดผลิตจนผสมเสร็จ)</div>`;
-    const tr=Object.entries(S.tried).slice(-8).reverse().map(([k,r])=>{const [x,y]=k.split('-');return`<li>${SP[x].em}${SP[x].n} + ${SP[y].em}${SP[y].n} → ${SP[r].em}${SP[r].n}${RC[k]===undefined&&x!==y?' <i>(ไม่ใช่สูตร)</i>':''}</li>`}).join('');
-    return`<h3>โรงผสม</h3>${body}${tr?`<div class="sub">ประวัติ</div><ul class="list">${tr}</ul>`:''}`;
-  }
-  if(tab==='exp'){
-    const zs=ZONES.map((z,i)=>`<button class="btn zone ${zoneSel===i?'on':''}" data-a="zone" data-v="${i}" ${codexN()<z.need?'disabled':''}>${z.n}${codexN()<z.need?` (${z.need})`:''}</button>`).join('');
-    let body='';
-    if(S.exp){
-      const e=S.exp;
-      body=`<div>กำลังสำรวจ${ZONES[e.zone].n}: ${e.crew.map(u=>{const f=find(u);return f?SP[f.a.sp].em:''}).join('')}</div>
-      <div class="bar" data-s="${e.start}" data-e="${e.end}"><i></i></div><div>กลับในอีก <b class="t" data-s="${e.start}" data-e="${e.end}"></b></div>`;
-    }else{
-      const crew=S.crew.map(u=>{const f=find(u);return f?`<button class="btn" data-a="crewDel" data-v="${u}">${SP[f.a.sp].em} ${SP[f.a.sp].n} ✕</button>`:''}).join('');
-      const z=ZONES[zoneSel];
-      body=`<div class="sub">ลูกเรือ (สูงสุด 3 ตัวจากช่องเก็บ ลูกเรือมากและหายากขึ้น = ของดีขึ้น)</div><div class="btns">${crew||'<span class="sub">ยังไม่มี</span>'}</div>
-      <div class="row">ใช้เวลา ${fmtT(z.dur*(1-haste('S')))}</div>
-      <button class="btn pri" data-a="expStart" ${S.crew.length&&codexN()>=z.need?'':'disabled'}>ออกเดินทาง</button>`;
-    }
-    return`<h3>สำรวจ</h3><div class="btns">${zs}</div>${body}<div class="sub">โซนสูงปลดล็อกตามจำนวนสัตว์ที่ค้นพบ (ตอนนี้ ${codexN()}/27)</div>`;
-  }
   if(tab==='codex'){
     const cells=SP.map((s,i)=>{
       if(S.codex[i]){const pr=PR[i];return`<div class="cell" style="--rc:var(--r${s.rar})"><span class="em">${s.em}</span><span class="nm">${s.n}</span><span class="meta">${S.shiny[i]?'✨':''}${pr?pr[2]:''}</span><span class="hintline">${s.par?SP[s.par[0]].n+'+'+SP[s.par[1]].n:'เจอในธรรมชาติ'}</span></div>`}
@@ -590,10 +556,74 @@ function report(){
     `บทบาทในฟาร์ม ${Object.entries(roles).map(([k,v])=>k+':'+v).join(' ')}`,
     '--- เหตุการณ์ล่าสุด ---',...S.log.slice(-25).map(l=>`[${fmtT(l.t)}] ${l.m}`)].join('\n');
 }
+
+/* ---------- station cards (all visible at once so things can be dragged between them) ---------- */
+const autoBtn=(k,u)=>U(u)?`<button class="btn ${S.auto[k]?'on':''}" data-a="tgl" data-v="${k}">🔁 อัตโนมัติ ${S.auto[k]?'เปิด':'ปิด'}</button>`:'';
+function kitchenCard(){
+  const bagChips=Object.keys(S.bag).map(k=>`<button class="chip" data-a="draftAdd" data-v="${k}" data-drag="item:${k}" data-gh="${PR[k][2]}" ${S.draft.length>=3?'disabled':''}>${PR[k][2]} ${PR[k][1]} ×${S.bag[k]}</button>`).join('')||'<span class="sub">กระเป๋าว่าง กด 🧺 เก็บทั้งหมด</span>';
+  const dr=[0,1,2].map(i=>S.draft[i]!==undefined?`<button class="slot3 f" data-a="draftDel" data-v="${i}">${PR[S.draft[i]][2]}</button>`:`<div class="slot3">·</div>`).join('');
+  let prev;if(S.draft.length>=2){const d=dishOf(S.draft);prev=`${DISH[d.key][1]} ${DISH[d.key][0]} มูลค่า ~🪙${fmt(d.val*priceMult())} · ใช้เวลา ${fmtT(COOK_PER_ITEM*S.draft.length*cookMult())}`}
+  else prev='ลากผลผลิตมาวางในหม้อ 2–3 ชิ้น (ตระกูลต่างกันได้ราคาดีกว่า)';
+  const free=S.pots.findIndex((p,i)=>i<potN()&&!p)>=0,room=counterTotal()+S.pots.filter(Boolean).length<showCap();
+  const pots=S.pots.slice(0,potN()).map((p,i)=>{
+    if(!p)return`<div class="line"><span class="l sub">หม้อ ${i+1}: ว่าง</span></div>`;
+    const done=S.t>=p.end;
+    return`<div class="line"><span class="l">หม้อ ${i+1}: ${p.items.map(x=>PR[x][2]).join('')}${done?' <span class="badge">รอที่ว่างในตู้โชว์</span>':''}</span>${done?'':`<div class="bar" style="width:90px" data-s="${p.start}" data-e="${p.end}"><i></i></div><b class="t" data-s="${p.start}" data-e="${p.end}"></b>`}</div>`;
+  }).join('');
+  const rows=Object.keys(S.counter).sort((a,b)=>dishAvg(b)-dishAvg(a)).map(k=>`<div class="line" data-drag="dish:${k}" data-gh="${DISH[k][1]}"><span class="l">${DISH[k][1]} ${DISH[k][0]} ×${S.counter[k].n} ${isDemand(k)?'<span class="tag">★ลูกค้าต้องการ ×1.6</span>':''}<br><span class="sub">จานละ 🪙${fmt(dishAvg(k))}</span></span><button class="btn" data-a="sellDish" data-v="${k}">ขาย</button></div>`).join('')||'<div class="sub">ยังไม่มีอาหารในตู้โชว์</div>';
+  const dem=S.demand.map(k=>`<span class="chip">${DISH[k][1]} ${DISH[k][0]}</span>`).join('');
+  return`<div class="box st"><h3>🍲 ครัว</h3>
+  <div class="sub">ผลผลิตในกระเป๋า (ลากลงหม้อ หรือแตะ)</div><div class="chips">${bagChips}</div>
+  <div class="btns" style="margin-top:6px"><button class="btn" data-a="sellRaw" ${bagTotal()?'':'disabled'}>ขายของดิบทั้งหมด 🪙${fmt(rawValue())} (ครึ่งราคา)</button></div>
+  <div class="dz" data-drop="pot" style="margin-top:8px"><div class="slotrow">${dr}</div><div class="sub" style="margin-top:4px">${prev}</div>
+  <div class="btns" style="margin-top:6px"><button class="btn pri" data-a="cook" ${S.draft.length>=2&&free&&room?'':'disabled'}>ปรุง</button><button class="btn pri" data-a="cookAll" ${(S.draft.length>=2||bagTotal()>=2)&&free&&room?'':'disabled'}>ปรุงทุกหม้อให้ (สูตรคุ้มสุด)</button></div>${pots}</div>
+  <h3 style="margin-top:10px">ตู้โชว์ ${counterTotal()}/${showCap()}</h3>${rows}
+  <div class="dz sell" data-drop="sell" style="margin-top:6px">💰 ลากเมนูมาวางที่นี่เพื่อขาย</div>
+  <div class="btns" style="margin-top:6px"><button class="btn pri" data-a="sellAll" ${counterTotal()?'':'disabled'}>ขายทั้งหมด 🪙${fmt(sellAllValue())}</button></div>
+  <div class="sub" style="margin-top:6px">ลูกค้าต้องการตอนนี้ (เปลี่ยนใน <b class="t" data-s="${S.demandEnd-300}" data-e="${S.demandEnd}"></b>)</div><div class="chips">${dem}</div></div>`;
+}
+function nurCard(){
+  const n=nurInfo(),slot=u=>{const f=u&&find(u);return f?cell(f.a,'sel',f.a.id):`<div class="cell empty">＋</div>`};
+  let body=`<div class="pair">${slot(S.nur.a)}<span>＋</span>${slot(S.nur.b)}</div>`;
+  if(S.nur.end!=null){
+    const wait=S.t>=S.nur.end;
+    body+=`<div class="bar" data-s="${S.nur.start}" data-e="${S.nur.end}"><i></i></div>`;
+    body+=wait?`<div class="badge">ไข่พร้อมฟัก แต่ช่องเก็บเต็ม ปล่อยหรือรวมดาวสัตว์ก่อน</div>`:`<div class="row">ฟักในอีก <b class="t" data-s="${S.nur.start}" data-e="${S.nur.end}"></b></div>`;
+  }else if(n){
+    body+=`<div class="row">ระดับผล: ${RAR[n.tier]} · 🪙${fmt(n.cost)} · ${fmtT(n.time)}</div>
+    <div class="btns"><button class="btn pri" data-a="nurStart" data-cost="${n.cost}" ${S.coins>=n.cost?'':'disabled'}>เริ่มผสม</button><button class="btn" data-a="nurCancel">ยกเลิก</button></div>`;
+  }else if(S.nur.a||S.nur.b)body+=`<div class="btns"><button class="btn" data-a="nurCancel">ยกเลิก</button></div>`;
+  else body+=`<div class="sub">ลากสัตว์ 2 ตัวมาวางที่นี่ (ถ้าดึงจากฟาร์ม ช่องนั้นจะหยุดผลิตจนผสมเสร็จ)</div>`;
+  const rp=S.lastPair&&S.nur.end==null&&!S.nur.a&&!S.nur.b?`<button class="btn" data-a="nurRepeat">ผสมซ้ำ ${SP[S.lastPair[0]].em}+${SP[S.lastPair[1]].em}</button>`:'';
+  const tr=Object.entries(S.tried).slice(-5).reverse().map(([k,r])=>{const [x,y]=k.split('-');return`<li>${SP[x].em}${SP[x].n} + ${SP[y].em}${SP[y].n} → ${SP[r].em}${SP[r].n}${RC[k]===undefined&&x!==y?' <i>(ไม่ใช่สูตร)</i>':''}</li>`}).join('');
+  return`<div class="box st" data-drop="nur"><h3>💞 โรงผสม</h3>${body}<div class="btns" style="margin-top:6px">${rp}${autoBtn('nur','aNur')}</div>${tr?`<div class="sub" style="margin-top:6px">ประวัติการลอง</div><ul class="list">${tr}</ul>`:''}</div>`;
+}
+function expCard(){
+  const zs=ZONES.map((z,i)=>`<button class="btn zone ${zoneSel===i?'on':''}" data-a="zone" data-v="${i}" ${codexN()<z.need?'disabled':''}>${z.n}${codexN()<z.need?` (${z.need})`:''}</button>`).join('');
+  let body;
+  if(S.exp){
+    const e=S.exp;
+    body=`<div>กำลังสำรวจ${ZONES[e.zone].n}: ${e.crew.map(u=>{const f=find(u);return f?SP[f.a.sp].em:''}).join('')}</div>
+    <div class="bar" data-s="${e.start}" data-e="${e.end}"><i></i></div><div>กลับในอีก <b class="t" data-s="${e.start}" data-e="${e.end}"></b></div>`;
+  }else{
+    const z=ZONES[zoneSel],crew=[0,1,2].map(i=>{const f=S.crew[i]&&find(S.crew[i]);return f?cell(f.a,'sel',f.a.id):`<div class="cell empty">＋</div>`}).join('');
+    body=`<div class="sub">ลากสัตว์จากช่องเก็บมาเป็นลูกเรือ (สูงสุด 3 ตัว)</div><div class="grid" style="grid-template-columns:repeat(3,1fr)">${crew}</div>
+    <div class="btns"><button class="btn pri" data-a="expStart" ${S.crew.length&&codexN()>=z.need?'':'disabled'}>ออกเดินทาง ${fmtT(z.dur*(1-haste('S')))}</button><button class="btn" data-a="expRepeat">ส่งซ้ำ (เลือกลูกเรือให้)</button>${autoBtn('exp','aExp')}</div>`;
+  }
+  return`<div class="box st" data-drop="crew"><h3>🧭 สำรวจ</h3><div class="btns" style="margin-bottom:6px">${zs}</div>${body}<div class="sub" style="margin-top:6px">โซนสูงปลดล็อกตามจำนวนสัตว์ที่ค้นพบ (${codexN()}/27)</div></div>`;
+}
+function mergeGroups(){const g={};S.stash.filter(a=>!a.busy&&a.star<3).forEach(a=>{const k=a.sp+'-'+a.star;g[k]=(g[k]||0)+1});return Object.values(g).filter(n=>n>=3).length}
+function stashCard(){
+  const cap=stashCap(),cells=S.stash.map(a=>cell(a,'sel',a.id));
+  for(let i=S.stash.length;i<cap;i++)cells.push(`<div class="cell empty dim">·</div>`);
+  return`<div class="box st" data-drop="stash"><div class="row"><h3 style="margin:0">🧺 ช่องเก็บสัตว์ ${S.stash.length}/${cap}</h3><span style="flex:1"></span>${autoBtn('rel','aRel')}</div>
+  <div class="btns" style="margin:6px 0"><button class="btn" data-a="mergeAll" ${mergeGroups()?'':'disabled'}>รวมดาวทั้งหมด (${mergeGroups()})</button><button class="btn" data-a="bulk" ${extras().length?'':'disabled'}>ปล่อยตัวซ้ำ (${extras().length})</button><button class="btn" data-a="sort">จัดเรียง</button></div>
+  <div class="grid">${cells.join('')}</div></div>`;
+}
 function render(){
-  const tabs=[['stash','ช่องเก็บ'],['kit','ครัว'],['up','อัปเกรด'],['nur','ผสม'],['exp','สำรวจ'],['codex','สมุด'],['lab','ทดสอบ']];
   const nurDone=S.nur.end!=null&&S.t>=S.nur.end,expDone=S.exp&&S.t>=S.exp.end;
   const aff=UPS.some(u=>U(u.k)<u.max&&(!u.need||U(u.need))&&S.coins>=upCost(u));
+  const menu=[['up','💰 อัปเกรด'],['codex','📖 สมุด'],['lab','🔧 ทดสอบ']];
   document.getElementById('app').innerHTML=`
   <div class="box"><div class="top"><div class="coins">🪙 <span id="coins">${fmt(S.coins)}</span> <span class="rate" id="pm">~${fmt(perMin())}/นาที</span></div><div class="res"><span>🌿 ${S.ess}</span></div></div>
     <div class="sub">เพดานออฟไลน์ ${offCap().toFixed(1)} ชม.${speed>1?` · <b class="badge">เร่งเวลา ×${speed}</b>`:''}</div>
@@ -603,14 +633,136 @@ function render(){
   <div class="farm">${Array.from({length:12},(_,i)=>slotHTML(i)).join('')}</div>
   ${toolbarHTML()}
   ${actionHTML()}
-  <div><div class="tabs">${tabs.map(([k,n])=>`<button class="tab ${tab===k?'on':''}" data-a="tab" data-v="${k}">${n}${(k==='nur'&&nurDone)||(k==='exp'&&expDone)||(k==='up'&&aff&&tab!=='up')?' <span class="badge">●</span>':''}</button>`).join('')}</div>
-  <div class="box panel">${panelHTML()}</div></div>`;
+  ${kitchenCard()}${nurCard()}${expCard()}${stashCard()}
+  <div class="tabs">${menu.map(([k,n])=>`<button class="tab ${tab===k?'on':''}" data-a="tab" data-v="${k}">${n}${((k==='up'&&aff&&tab!=='up')||(k==='lab'&&0))?' <span class="badge">●</span>':''}</button>`).join('')}</div>
+  ${tab?`<div class="box panel">${panelHTML()}</div>`:''}`;
+  // completion badges in the station headings
+  if(nurDone){const h=document.querySelector('[data-drop=nur] h3');h&&(h.innerHTML+=' <span class="badge">●</span>')}
+  if(expDone){const h=document.querySelector('[data-drop=crew] h3');h&&(h.innerHTML+=' <span class="badge">●</span>')}
   tickUI();
 }
-document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(el&&!el.disabled)act(el.dataset.a,el.dataset.v)});
-document.addEventListener('pointerdown',()=>{pressed=true});
-document.addEventListener('pointerup',()=>{pressed=false});
-document.addEventListener('pointercancel',()=>{pressed=false});
+
+/* ---------- helpers used by drag-and-drop and the "all / repeat / auto" buttons ---------- */
+function placeFarm(uid,i){
+  if(i>=S.unlocked)return;const cur=find(uid);if(!cur||cur.a.busy)return;const here=S.farm[i];
+  if(here&&(here.id===cur.a.id||here.busy))return;
+  if(cur.loc==='stash'){S.stash.splice(cur.i,1);S.farm[i]=cur.a;if(here)S.stash.push(here)}
+  else{S.farm[cur.i]=here||null;S.farm[i]=cur.a}
+}
+function unprep(uid){
+  if(S.nur.end==null){if(S.nur.a===uid)S.nur.a=null;if(S.nur.b===uid)S.nur.b=null}
+  S.crew=S.crew.filter(u=>u!==uid);clearPrep(uid);
+}
+function releaseAnimal(uid){
+  const f=find(uid);if(!f||f.a.busy)return;const a=f.a;
+  S.coins+=V[rar(a)]*a.star*4;S.ess+=ESS[rar(a)]*a.star;
+  if(f.loc==='farm')S.farm[f.i]=null;else S.stash.splice(f.i,1);
+  if(sel===uid)sel=null;log(`ปล่อย ${sp(a).n}`);
+}
+function releaseExtras(auto){
+  const ex=extras();
+  ex.forEach(a=>{S.coins+=V[rar(a)]*a.star*4;S.ess+=ESS[rar(a)]*a.star;const i=S.stash.indexOf(a);if(i>=0)S.stash.splice(i,1);if(sel===a.id)sel=null});
+  if(ex.length)log(`${auto?'ปล่อยอัตโนมัติ':'ปล่อยตัวซ้ำ'} ${ex.length} ตัว`);
+}
+function mergeAll(){
+  let n=0;
+  for(let again=true;again;){
+    again=false;const g={};
+    S.stash.filter(a=>!a.busy&&a.star<3).forEach(a=>{const k=a.sp+'-'+a.star;(g[k]=g[k]||[]).push(a)});
+    for(const k in g)if(g[k].length>=3){const [a,b,c]=g[k];S.stash=S.stash.filter(x=>x!==b&&x!==c);a.star++;a.shiny=a.shiny||b.shiny||c.shiny;n++;again=true;break}
+  }
+  if(n)log(`รวมดาว ${n} ครั้ง`);return n;
+}
+function tryNursery(a,b,manual){
+  if(S.nur.end!=null)return false;
+  if(S.nur.a||S.nur.b){[S.nur.a,S.nur.b].forEach(u=>u&&clearPrep(u));S.nur={a:null,b:null,end:null}}
+  const pool=S.stash.filter(x=>!x.busy),A=pool.find(x=>x.sp===a),B=pool.find(x=>x.sp===b&&x!==A);
+  if(!A||!B)return false;
+  A.busy=B.busy='prep';S.nur.a=A.id;S.nur.b=B.id;
+  const n=nurInfo();
+  if(n&&S.coins>=n.cost){nurStart();return true}
+  if(manual)return true;
+  unprep(A.id);unprep(B.id);return false;
+}
+function autoExp(){
+  if(S.exp)return false;
+  const pool=S.stash.filter(x=>!x.busy&&!x.shiny&&x.star===1);if(!pool.length)return false;
+  const cnt={};S.stash.forEach(x=>cnt[x.sp]=(cnt[x.sp]||0)+1);
+  const crew=pool.sort((x,y)=>(cnt[y.sp]>1?1:0)-(cnt[x.sp]>1?1:0)||rar(x)-rar(y)).slice(0,2);
+  S.crew.forEach(clearPrep);S.crew=crew.map(x=>{x.busy='prep';return x.id});
+  let z=Math.min(S.lastZone,4);while(z>0&&codexN()<ZONES[z].need)z--;zoneSel=z;
+  expStart();return true;
+}
+
+/* ---------- drag & drop (pointer events: works with mouse and touch) ---------- */
+let drag=null, suppress=false, pressedAt=0;
+const dkind=el=>el.dataset.drop.split(':')[0];
+const okTarget=(src,k)=>src.t==='animal'?['farm','stash','nur','crew','release'].includes(k):src.t==='item'?k==='pot':src.t==='dish'?k==='sell':false;
+function doDrop(src,el){
+  const [k,arg]=el.dataset.drop.split(':');S.acts++;
+  if(src.t==='animal'){
+    const f=find(src.v);if(!f)return;const a=f.a;
+    if(a.busy&&a.busy!=='prep'){log(`${sp(a).n} กำลังทำงานอยู่ ย้ายไม่ได้`);return}
+    if(k==='nur'){if(!a.busy&&S.nur.end==null&&!(S.nur.a&&S.nur.b)){S.nur[S.nur.a==null?'a':'b']=a.id;a.busy='prep'}return}
+    if(k==='crew'){
+      if(a.busy)return;
+      if(f.loc!=='stash'){log('ลูกเรือต้องมาจากช่องเก็บสัตว์');return}
+      if(!S.exp&&S.crew.length<3){S.crew.push(a.id);a.busy='prep'}return;
+    }
+    if(a.busy==='prep')unprep(a.id);
+    if(k==='farm')placeFarm(a.id,+arg);
+    else if(k==='stash'){const g=find(a.id);if(g&&g.loc==='farm'&&S.stash.length<stashCap()){S.farm[g.i]=null;S.stash.push(g.a)}}
+    else if(k==='release')releaseAnimal(a.id);
+  }else if(src.t==='item'){
+    if(k==='pot'&&S.draft.length<3&&S.bag[src.v]>0){bagAdd(src.v,-1);S.draft.push(src.v)}
+  }else if(src.t==='dish'&&k==='sell')sellDish(src.v,1e9,true);
+}
+function ghostMove(e){drag.ghost.style.left=e.clientX+'px';drag.ghost.style.top=e.clientY+'px'}
+function hotUpdate(e){
+  const under=document.elementFromPoint(e.clientX,e.clientY),t=under&&under.closest('[data-drop]');
+  const ok=t&&okTarget(drag.src,dkind(t))?t:null;
+  if(drag.hot!==ok){drag.hot&&drag.hot.classList.remove('hot');ok&&ok.classList.add('hot');drag.hot=ok}
+}
+function dragEnd(){
+  if(!drag)return;
+  document.querySelectorAll('.dropok,.hot').forEach(x=>x.classList.remove('dropok','hot'));
+  drag.ghost&&drag.ghost.remove();document.getElementById('rz').hidden=true;drag=null;
+}
+document.addEventListener('pointerdown',e=>{
+  pressed=true;pressedAt=performance.now();
+  const el=e.target.closest('[data-drag]');if(!el||(e.button&&e.button>0))return;
+  const [t,v]=el.dataset.drag.split(':');
+  drag={src:{t,v:t==='dish'?v:+v},gh:el.dataset.gh||'•',sx:e.clientX,sy:e.clientY,started:false,ghost:null,hot:null};
+});
+document.addEventListener('pointermove',e=>{
+  if(!drag)return;
+  if(!drag.started){
+    if(Math.hypot(e.clientX-drag.sx,e.clientY-drag.sy)<8)return;
+    drag.started=true;
+    const g=document.createElement('div');g.className='ghost';g.textContent=drag.gh;document.body.appendChild(g);drag.ghost=g;
+    document.querySelectorAll('[data-drop]').forEach(t=>{if(okTarget(drag.src,dkind(t)))t.classList.add('dropok')});
+    if(drag.src.t==='animal')document.getElementById('rz').hidden=false;
+  }
+  ghostMove(e);hotUpdate(e);
+  if(e.clientY<70)window.scrollBy(0,-14);else if(e.clientY>innerHeight-70)window.scrollBy(0,14);
+  e.preventDefault();
+},{passive:false});
+function pointerEnd(e,cancel){
+  pressed=false;
+  if(drag&&drag.started){
+    suppress=true;setTimeout(()=>{suppress=false},60);
+    if(!cancel){
+      const under=document.elementFromPoint(e.clientX,e.clientY),t=under&&under.closest('[data-drop]');
+      if(t&&okTarget(drag.src,dkind(t))){const src=drag.src;dragEnd();doDrop(src,t);step();lastSig=sig();render();return}
+    }
+  }
+  dragEnd();
+}
+document.addEventListener('pointerup',e=>pointerEnd(e,false));
+document.addEventListener('pointercancel',e=>pointerEnd(e,true));
+window.addEventListener('blur',()=>{pressed=false;dragEnd()});
+{const rz=document.createElement('div');rz.id='rz';rz.dataset.drop='release';rz.hidden=true;rz.textContent='🌿 วางที่นี่เพื่อปล่อยสัตว์';document.body.appendChild(rz)}
+document.addEventListener('click',e=>{if(suppress)return;const el=e.target.closest('[data-a]');if(el&&!el.disabled)act(el.dataset.a,el.dataset.v)});
 
 /* ---------- boot ---------- */
 if(!load())init();
@@ -625,6 +777,6 @@ if(!S.nur)S.nur={a:null,b:null,end:null};
 }
 step();lastSig=sig();render();
 setInterval(loop,250);
-window.__G={get S(){return S},act,render,setSel:v=>{sel=v},SP,RC,PR,UPS,U,sim,simSpan,report,perMin,pileCap,bagCap,potN,showCap,counterTotal,bagTotal,dishOf,bestMix};
+window.__G={tryNursery,autoExp,mergeAll,doDrop,releaseExtras,get S(){return S},act,render,setSel:v=>{sel=v},SP,RC,PR,UPS,U,sim,simSpan,report,perMin,pileCap,bagCap,potN,showCap,counterTotal,bagTotal,dishOf,bestMix};
 })();
 </script>

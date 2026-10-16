@@ -171,7 +171,7 @@ function act(a,v){
 }
 
 /* ---------- render ---------- */
-const perSec=()=>S.slots.reduce((a,s,i)=>a+(s&&i<S.unlocked&&!s.busy?A[s.k].val/A[s.k].iv:0),0);
+const perMin=()=>S.slots.reduce((a,s,i)=>a+(s&&i<S.unlocked&&!s.busy?60/A[s.k].iv:0),0);
 const sig=()=>JSON.stringify([S.unlocked,S.slots,S.bag,S.pot&&Object.keys(S.pot.items).map(k=>k+S.pot.items[k]),S.dishes,S.breed,S.job&&1,S.waiting,mode,S.throwQty,Math.floor(S.coins),S.sold]);
 function slotHTML(i){
   if(i>=S.unlocked){
@@ -197,10 +197,10 @@ function render(){
   const canBreed=!S.job&&S.breed.length===2;
   const sel=S.breed.map(i=>A[S.slots[i].k].e).join(' + ')||'เลือกสัตว์ 2 ตัว';
   app.innerHTML=`
-  <div class="box wide"><div class="row" style="justify-content:space-between"><div><div class="sub">เงิน</div><div class="big">🪙 <span id="coins">${fmt(S.coins)}</span></div><div class="sub">~${fmt(perSec())}/วิ</div></div>
+  <div class="box wide"><div class="row" style="justify-content:space-between"><div><div class="sub">เงิน</div><div class="big">🪙 <span id="coins">${fmt(S.coins)}</span></div></div>
     <button class="btn" data-a="reset">เริ่มใหม่</button></div>
     <div class="msg">${S.msgs.map(m=>`<div>${m}</div>`).join('')}</div></div>
-  <div class="box"><div class="row" style="justify-content:space-between"><h3>ฟาร์ม</h3><button class="btn" data-a="collectAll">📦 เก็บทั้งหมด</button></div>
+  <div class="box"><div class="row" style="justify-content:space-between"><h3>ฟาร์ม</h3><span class="sub">ผลิตอยู่ ~${perMin().toFixed(1)} ชิ้น/นาที</span><button class="btn" data-a="collectAll">📦 เก็บทั้งหมด</button></div>
     <div class="farm">${Array.from({length:MAXSLOTS},(_,i)=>slotHTML(i)).join('')}</div></div>
   <div class="box"><h3>โยนลงหม้อ</h3>
     <div class="row">${qty}<span style="flex:1"></span><button class="btn pri" data-a="throwAll" ${bagN()?'':'disabled'}>โยนทั้งหมด</button></div>
@@ -223,6 +223,10 @@ function tickUI(){
   document.querySelectorAll('[data-job]').forEach(el=>{if(S.job)el.style.width=Math.min(100,100*(S.t-S.job.start)/Math.max(1,S.job.end-S.job.start))+'%'});
   document.querySelectorAll('[data-t]').forEach(el=>{el.textContent=fmtT(+el.dataset.t-S.t)});
 }
+let lastPress=0;
+document.addEventListener('pointerdown',()=>{lastPress=Infinity});
+document.addEventListener('pointerup',()=>{lastPress=performance.now()});
+document.addEventListener('pointercancel',()=>{lastPress=performance.now()});
 document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(el&&!el.disabled)act(el.dataset.a,el.dataset.v)});
 
 /* ---------- boot + loop ---------- */
@@ -234,7 +238,7 @@ let last=performance.now(),sv=0;
 setInterval(()=>{
   const now=performance.now(),dt=Math.min(600,(now-last)/1000);last=now;
   simSpan(dt,.5);
-  const s=sig();if(s!==lastSig){lastSig=s;render()}else tickUI();
+  const s=sig();if(s!==lastSig&&performance.now()-lastPress>600){lastSig=s;render()}else tickUI();
   sv+=dt;if(sv>5){sv=0;save()}
 },250);
 window.__G={get S(){return S},act,simSpan,A,RECIPE,ING,LADDER,tierOf,render,setMode:v=>{mode=v}};

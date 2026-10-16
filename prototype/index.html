@@ -318,7 +318,7 @@ function throwItems(sp,qty,pot){
 function throwAll(pot){let n=0;for(const k of Object.keys(S.bag))n+=throwItems(+k,1e9,pot);return n}
 function finishPot(k){
   const p=S.pots[k],T=potT(p),t=tierOf(T);
-  if(t<0){for(const sp in p.items)bagAdd(+sp,p.items[sp]);S.pots[k]=null;log(`หม้อ ${k+1}: ของน้อยเกินไป (ต้องรวมถึง ${LADDER[0][0]}) คืนของเข้ากระเป๋า`);return}
+  if(t<0){for(const sp in p.items)bagAdd(+sp,p.items[sp]);S.pots[k]=null;log(`หม้อ ${k+1}: ของน้อยเกินไป ยังไม่ได้อาหาร คืนของเข้ากระเป๋า`);return}
   const fam=new Set(Object.keys(p.items).map(sp=>PR[sp][0])),val=T*LADDER[t][3]*(1+.2*(fam.size-1)),key='D'+t;
   const c=S.counter[key]||(S.counter[key]={n:0,sum:0});c.n++;c.sum+=val;S.pots[k]=null;
   if(!S.dishes[key]){S.dishes[key]=1;log(`ค้นพบเมนู ${LADDER[t][2]} ${LADDER[t][1]}`)}
@@ -461,7 +461,7 @@ function checkUnlocks(){
   let c=false;
   if(S.sold>=3||S.nursed>0)c=tell('nur','🔓 ปลดล็อก โรงผสม และ ช่องเก็บสัตว์')||c;
   if(S.nursed>0)c=tell('exp','🔓 ปลดล็อก การสำรวจ')||c;
-  if(S.dishes.D2||S.orders>0)c=tell('orders','🔓 ปลดล็อก ออเดอร์ และ ลูกค้าต้องการ')||c;
+  if(Object.keys(S.dishes).filter(k=>k[0]==='D').length>=3||S.orders>0)c=tell('orders','🔓 ปลดล็อก ออเดอร์ และ ลูกค้าต้องการ')||c;
   return c;
 }
 function step(){
@@ -644,7 +644,7 @@ const anyPile=()=>S.farm.some(a=>a&&a.pile>0);
 const HINTS=[
  {id:'wait',when:()=>!S.sold&&!S.mCollect&&!anyPile()&&!bagTotal()&&!S.pots.some(Boolean),done:()=>anyPile()||bagTotal()>0,text:'รอสักครู่ สัตว์กำลังผลิตของ'},
  {id:'collect',when:()=>anyPile(),done:()=>S.mCollect>0,text:'กด 🧺 เก็บทั้งหมด'},
- {id:'throw',when:()=>bagTotal()>0,done:()=>S.mCook>0,text:'กดไอคอนวัตถุดิบ หรือ "โยนทั้งหมด" ลงหม้อ (รวมมูลค่าถึง 10 ถึงจะได้อาหาร)'},
+ {id:'throw',when:()=>bagTotal()>0,done:()=>S.mCook>0,text:'กดไอคอนวัตถุดิบ หรือ "โยนทั้งหมด" ลงหม้อ แล้วรอดูว่าได้อะไร'},
  {id:'sell',when:()=>counterTotal()>0,done:()=>S.sold>0,text:'กด "ขายทั้งหมด"'},
  {id:'bigger',when:()=>S.sold>0,done:()=>Object.keys(S.dishes).length>=2,ttl:90,text:'รอให้ของเต็มกระเป๋าแล้วโยนทีเดียว ยิ่งโยนเยอะ ยิ่งได้อาหารแพง'},
  {id:'tap',when:()=>S.sold>=2,done:()=>!!S.seen.tapped,ttl:60,text:'แตะสัตว์เพื่อดูข้อมูล ลากเพื่อย้าย'},
@@ -703,7 +703,7 @@ function panelHTML(){
   if(tab==='up')return upgradesHTML();
   if(tab==='help')return`<h3>วิธีเล่น</h3><ul class="list" style="color:var(--fg);font-size:13px;display:flex;flex-direction:column;gap:6px">
     <li><b>เก็บ</b> สัตว์ผลิตของเป็นกองหน้าช่อง กด 🧺 เก็บทั้งหมด (กองเต็มแล้วสัตว์หยุดผลิต)</li>
-    <li><b>ปรุง</b> โยนวัตถุดิบลงหม้อ หม้อเดือด 5 วินาที โยนเพิ่มได้ ยิ่งมูลค่ารวมสูงยิ่งได้อาหารแพง ต้องรวมถึง 10 ถึงจะได้อาหาร ถ้าไม่ถึงของจะคืนเข้ากระเป๋า</li>
+    <li><b>ปรุง</b> โยนวัตถุดิบลงหม้อ หม้อเดือด 5 วินาที โยนเพิ่มได้ รอดูว่าได้เมนูอะไร ยิ่งโยนเยอะยิ่งได้เมนูที่แพงขึ้น ถ้าของน้อยเกินไปจะยังไม่ได้อาหาร (ของคืนเข้ากระเป๋า)</li>
     <li><b>ขาย</b> กด "ขายทั้งหมด" หรือลากเมนูไปช่องขาย ขายเมนูเดิมซ้ำๆ ราคาตก แล้วค่อยๆ ฟื้น</li>
     <li><b>ผสมสัตว์</b> ลากสัตว์ 2 ตัวไปวางในกล่องโรงผสม แล้วกด "เริ่มผสม" สูตรตายตัว สลับลำดับก็เหมือนเดิม คู่ที่ไม่มีสูตรจะได้พ่อหรือแม่แบบสุ่ม ตัวที่ผสมจะออกจากช่องและกลับที่เดิมเมื่อเสร็จ</li>
     <li><b>สำรวจ</b> ลากสัตว์ไปวางในกล่องสำรวจ กลับมาพร้อมสัตว์ใหม่ โซนไกลปลดล็อกเมื่อค้นพบสัตว์ครบตามจำนวน</li>
@@ -717,10 +717,10 @@ function panelHTML(){
         else{const own=s.par.find(p=>S.codex[p]);if(own!==undefined)h=`ใช้ ${SP[own].n} + ?`}}
       return`<div class="cell dim" style="--rc:var(--r${s.rar})"><span class="em">❓</span><span class="nm">${RAR[s.rar]}</span><span class="meta"></span><span class="hintline">${h||'ยังไม่มีเบาะแส'}</span></div>`;
     }).join('');
-    const dishes=LADDER.map((l,i)=>S.dishes['D'+i]?`<span class="chip">${l[2]} ${l[1]} ≥${l[0]}</span>`:`<span class="chip dim">❓ ≥${l[0]}</span>`).join('');
+    const dishes=LADDER.map((l,i)=>S.dishes['D'+i]?`<span class="chip">${l[2]} ${l[1]}</span>`:`<span class="chip dim">❓</span>`).join('');
     const nD=Object.keys(S.dishes).filter(k=>k[0]==='D').length;
     return`<h3>สมุดภาพ ${codexN()}/27 · ✨ ${Object.keys(S.shiny).length}</h3><div class="grid">${cells}</div>
-    <h3>เมนูอาหาร ${nD}/${LADDER.length}</h3><div class="sub">โยนวัตถุดิบให้มูลค่ารวมถึงตัวเลขจะได้เมนูนั้น ยิ่งสูงยิ่งแพง</div><div class="chips">${dishes}</div>`;
+    <h3>เมนูอาหาร ${nD}/${LADDER.length}</h3><div class="sub">ลองโยนของหลายแบบ ยิ่งโยนเยอะยิ่งได้เมนูที่แพงขึ้น</div><div class="chips">${dishes}</div>`;
   }
   // lab
   const sp_=[1,10,60,300].map(x=>`<button class="btn ${speed===x?'pri':''}" data-a="speed" data-v="${x}">×${x}</button>`).join('');
@@ -749,11 +749,11 @@ function kitchenCard(){
   const qty=[[1,'×1'],[5,'×5'],[999,'ทั้งหมด']].map(([n,l])=>`<button class="btn sm ${q===n?'pri':''}" data-a="qty" data-v="${n}">${l}</button>`).join('');
   const pots=Array.from({length:potN()},(_,i)=>{
     const p=S.pots[i],cls=i===tp?'pot3 sel':'pot3';
-    if(!p)return`<div class="${cls}" data-drop="pot:${i}" data-a="potsel" data-v="${i}"><span class="sub">หม้อ ${i+1}: ว่าง${i===tp&&!Object.keys(S.dishes).length?` · โยนของลงมา (รวมถึง ${LADDER[0][0]} ได้ ${LADDER[0][2]} ${LADDER[0][1]})`:''}</span></div>`;
+    if(!p)return`<div class="${cls}" data-drop="pot:${i}" data-a="potsel" data-v="${i}"><span class="sub">หม้อ ${i+1}: ว่าง</span></div>`;
     const T=potT(p),t=tierOf(T),nx=LADDER[t+1],done=S.t>=p.end;
     const items=Object.keys(p.items).map(k=>`${PR[k][2]}×${p.items[k]}`).join(' ');
     return`<div class="${cls}" data-drop="pot:${i}" data-a="potsel" data-v="${i}"><div class="row nowrap"><span style="flex:1">หม้อ ${i+1}: ${items}</span>${done?'<span class="badge">รอที่ว่างในตู้โชว์</span>':`<b class="t" data-s="${p.start}" data-e="${p.end}"></b>`}</div>
-      <div class="sub">รวม ${fmt(T)} → <b>${t>=0?`${LADDER[t][2]} ${LADDER[t][1]}`:'ยังไม่ถึงเมนูแรก'}</b>${nx?` · อีก ${fmt(nx[0]-T)} ได้ ${nx[2]} ${nx[1]}`:''}</div>${done?'':`<div class="bar" data-s="${p.start}" data-e="${p.end}"><i></i></div>`}</div>`;
+      ${done?'':`<div class="bar" data-s="${p.start}" data-e="${p.end}"><i></i></div>`}</div>`;
   }).join('');
   const rows=Object.keys(S.counter).sort((a,b)=>dishAvg(b)-dishAvg(a)).map(k=>{const sat=Math.round(Math.min(.5,S.sat[k]||0)*100);return`<div class="line" data-drag="dish:${k}" data-gh="${dinfo(k)[1]}"><span class="l">${dinfo(k)[1]} ${dinfo(k)[0]} ×${S.counter[k].n} · 🪙${fmt(dishAvg(k))} ${isDemand(k)?'<span class="tag">★×1.6</span>':''}${sat>=3?`<span class="tag">🔻ตลาดอิ่ม −${sat}%</span>`:''}${reserved(k)?'<span class="tag">📋กันไว้ส่งออเดอร์</span>':''}</span><button class="btn sm" data-a="sellDish" data-v="${k}" ${sellable(k)?'':'disabled'}>ขาย</button></div>`}).join('')||'';
   const dem=S.demand.map(k=>`<span title="${dinfo(k)[0]}">${dinfo(k)[1]}</span>`).join(' ');
@@ -765,7 +765,7 @@ function kitchenCard(){
   <div class="row"><h3>ตู้โชว์ ${counterTotal()}/${showCap()}</h3><span style="flex:1"></span><button class="btn sm pri" data-a="sellAll" ${sellAllValue()>0?'':'disabled'}>ขายทั้งหมด 🪙${fmt(sellAllValue())}</button></div>
   <div class="counter">${rows}</div>
   <div class="dz sell" data-drop="sell">💰 ลากมาขาย</div>
-  ${S.unlock.orders?`<div class="sub" title="เมนูที่ลูกค้าต้องการขายได้ราคา ×1.6">ลูกค้าต้องการ ${dem} · เปลี่ยนใน <b class="t" data-s="${S.demandEnd-DEMAND_LEN}" data-e="${S.demandEnd}"></b></div>${ord}`:`<div class="sub">🔒 ออเดอร์ · ลูกค้าต้องการ: ทำเมนู ${LADDER[2][2]} ${LADDER[2][1]} (รวมถึง ${LADDER[2][0]})</div>`}</div>`;
+  ${S.unlock.orders?`<div class="sub" title="เมนูที่ลูกค้าต้องการขายได้ราคา ×1.6">ลูกค้าต้องการ ${dem} · เปลี่ยนใน <b class="t" data-s="${S.demandEnd-DEMAND_LEN}" data-e="${S.demandEnd}"></b></div>${ord}`:`<div class="sub">🔒 ออเดอร์ · ลูกค้าต้องการ: ค้นพบเมนูครบ 3 ชนิด (${Math.min(3,Object.keys(S.dishes).filter(k=>k[0]==='D').length)}/3)</div>`}</div>`;
 }
 function nurCard(){
   const n=nurInfo(),slot=u=>{const f=u&&find(u);return f?cell(f.a,'sel',f.a.id,'',true):`<div class="cell sm empty">＋</div>`};

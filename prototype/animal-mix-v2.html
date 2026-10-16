@@ -1,0 +1,242 @@
+<title>Animal Mix Farm v2</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Prototype v2: one loop only. Animals make ingredients -> throw into one pot -> sell dishes -> buy more. Emoji, no art. */
+:root{--bg:#eaf0e4;--panel:#fafcf6;--fg:#1d2a1c;--muted:#58684f;--line:#cbd8c2;--accent:#3d7a38;--accent-fg:#fff;--warn:#a8501a}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#111a13;--panel:#1a261d;--fg:#e4eedf;--muted:#98ad90;--line:#2e4132;--accent:#74c26b;--accent-fg:#0c180e;--warn:#e69a62;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#111a13;--panel:#1a261d;--fg:#e4eedf;--muted:#98ad90;--line:#2e4132;--accent:#74c26b;--accent-fg:#0c180e;--warn:#e69a62;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 'Noto Sans Thai',system-ui,sans-serif;padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+button{font:inherit;color:inherit;cursor:pointer}
+.app{max-width:920px;margin:0 auto;display:grid;gap:10px;grid-template-columns:1fr}
+@media(min-width:760px){.app{grid-template-columns:1fr 1fr}.wide{grid-column:1/-1}}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;min-width:0}
+h3{margin:0;font-size:15px}
+.big{font:700 26px 'Mali',system-ui;font-variant-numeric:tabular-nums}
+.sub{color:var(--muted);font-size:12px}
+.row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px 10px;min-height:34px}
+.btn.pri{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.btn.on{outline:2px solid var(--accent)}
+.btn:disabled{opacity:.45;cursor:default}
+.farm{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.slot{border:2px solid var(--line);border-radius:10px;background:var(--panel);min-height:78px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px;font-size:12px;gap:2px;position:relative}
+.slot .em{font-size:28px;line-height:1}
+.slot .pl{position:absolute;top:3px;right:5px;font-size:12px;font-weight:700}
+.slot.has{border-color:var(--accent)}
+.slot.br{opacity:.55}
+.slot.pick{outline:3px solid var(--warn)}
+.slot.lock{opacity:.35;border-style:dashed}
+.slot:disabled{cursor:default}
+.bar{height:6px;width:86%;background:var(--line);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);width:0}
+.bar.w i{background:var(--warn)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;min-height:34px}
+.chip{border:1px solid var(--line);border-radius:999px;padding:4px 12px;background:var(--panel);font-size:15px}
+.chip:disabled{opacity:.45}
+.pot{min-height:96px;border:2px dashed var(--line);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;padding:8px}
+.pot.on{border-style:solid;border-color:var(--accent)}
+.pot .items{font-size:22px;letter-spacing:.04em}
+.pot .t{font:700 22px 'Mali',system-ui;font-variant-numeric:tabular-nums}
+.line{display:flex;justify-content:space-between;gap:8px;align-items:center;border-bottom:1px solid var(--line);padding:4px 0}
+.line:last-child{border-bottom:0}
+.msg{min-height:2.6em;font-size:13px;color:var(--muted)}
+.msg div:first-child{color:var(--fg)}
+</style>
+<div class="app" id="app"></div>
+<script>
+(()=>{'use strict';
+const KEY='animal_mix_v2';
+/* animals: out = ingredient emoji, val = value per item, iv = seconds per item */
+const A={
+ hen:{n:'ไก่',e:'🐔',out:'🥚',val:6,iv:6,tier:0},
+ duck:{n:'เป็ด',e:'🦆',out:'🥚',val:6,iv:7,tier:0},
+ sheep:{n:'แกะ',e:'🐑',out:'🥛',val:6,iv:6,tier:0},
+ goose:{n:'ห่าน',e:'🦢',out:'🥚',val:24,iv:8,tier:1},
+ cow:{n:'วัว',e:'🐄',out:'🥛',val:24,iv:9,tier:1},
+ elephant:{n:'ช้าง',e:'🐘',out:'🌰',val:96,iv:12,tier:2}};
+const KINDS=Object.keys(A);
+const SHOP=['hen','duck','sheep'];
+/* hidden breeding table: never shown to the player */
+const RECIPE={'duck+hen':'goose','hen+sheep':'cow','cow+goose':'elephant'};
+/* cooking ladder: total value in the pot -> dish. The thresholds are not shown anywhere. */
+const LADDER=[[10,'ไข่ต้ม','🥚'],[20,'ไข่คน','🍳'],[40,'ไข่เจียว','🥞'],[80,'คัสตาร์ด','🍮'],[160,'ออมเล็ต','🍄'],[320,'ข้าวผัด','🍛'],[640,'ซุปครีม','🍲'],[1280,'ชีสเค้ก','🍰']];
+const COOK=5, BAG=30, PILE=5, MAXSLOTS=12, START_SLOTS=4;
+const ing=k=>A[k].out+A[k].val;               // ingredient key, e.g. '🥚6'
+const ING={};KINDS.forEach(k=>{ING[ing(k)]={e:A[k].out,v:A[k].val}});
+const tierOf=T=>{let t=-1;LADDER.forEach((l,i)=>{if(T>=l[0])t=i});return t};
+
+let S,mode=false,lastSig='';
+const fresh=()=>({t:0,coins:40,slots:[{k:'hen',pile:0,prog:0,busy:false},{k:'duck',pile:0,prog:0,busy:false},{k:'sheep',pile:0,prog:0,busy:false},null,null,null,null,null,null,null,null,null],
+  unlocked:START_SLOTS,bag:{},pot:null,dishes:{},sold:0,breed:[],job:null,waiting:[],found:{},throwQty:1,msgs:[],lastReal:Date.now()});
+const save=()=>{try{S.lastReal=Date.now();localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const load=()=>{try{const j=localStorage.getItem(KEY);if(j){S=JSON.parse(j);return true}}catch(e){}return false};
+const msg=m=>{S.msgs.unshift(`[${fmtT(S.t)}] ${m}`);S.msgs.length=Math.min(S.msgs.length,3)};
+const fmt=n=>{if(n<1000)return n<10&&n%1?n.toFixed(1):Math.floor(n)+'';const u=['K','M','B'];let i=-1;while(n>=1000&&i<u.length-1){n/=1000;i++}return n.toFixed(n<10?2:n<100?1:0)+u[i]};
+const fmtT=s=>{s=Math.max(0,Math.ceil(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+const bagN=()=>Object.values(S.bag).reduce((a,b)=>a+b,0);
+const emptyIdx=()=>S.slots.findIndex((s,i)=>i<S.unlocked&&!s);
+
+/* ---------- simulation ---------- */
+function finishPot(){
+  const p=S.pot,T=Object.keys(p.items).reduce((a,k)=>a+p.items[k]*ING[k].v,0),t=tierOf(T);
+  S.pot=null;
+  if(t<0){for(const k in p.items)S.bag[k]=(S.bag[k]||0)+p.items[k];msg('ของน้อยเกินไป ยังไม่ได้อาหาร (ของคืนเข้ากระเป๋า)');return}
+  const d=S.dishes[t]||(S.dishes[t]={n:0,v:0});
+  d.n++;d.v+=T*(1.2+.1*t);
+  msg(`ได้ ${LADDER[t][2]} ${LADDER[t][1]}`);
+}
+function finishJob(){
+  const j=S.job,key=[j.ka,j.kb].sort().join('+'),res=RECIPE[key]||(Math.random()<.5?j.ka:j.kb);
+  S.slots[j.ia].busy=false;S.slots[j.ib].busy=false;S.job=null;
+  if(!S.found[res]&&RECIPE[key]){S.found[res]=1}
+  msg(`🐣 ได้ ${A[res].e} ${A[res].n}`);
+  const e=emptyIdx();
+  if(e>=0)S.slots[e]={k:res,pile:0,prog:0,busy:false};else S.waiting.push(res);
+}
+function sim(dt){
+  S.t+=dt;
+  for(let i=0;i<S.unlocked;i++){
+    const s=S.slots[i];if(!s||s.busy)continue;
+    s.prog+=dt;
+    while(s.prog>=A[s.k].iv&&s.pile<PILE){s.prog-=A[s.k].iv;s.pile++}
+    if(s.pile>=PILE)s.prog=0;
+  }
+  if(S.pot&&S.t>=S.pot.end)finishPot();
+  if(S.job&&S.t>=S.job.end)finishJob();
+  while(S.waiting.length&&emptyIdx()>=0){const e=emptyIdx();S.slots[e]={k:S.waiting.shift(),pile:0,prog:0,busy:false}}
+}
+function simSpan(g,m){const d=Math.max(m,g/200);let r=g;while(r>1e-9){const x=Math.min(d,r);sim(x);r-=x}}
+
+/* ---------- actions ---------- */
+function collect(i){
+  const s=S.slots[i];if(!s||!s.pile)return;
+  const k=ing(s.k);
+  while(s.pile>0&&bagN()<BAG){s.pile--;S.bag[k]=(S.bag[k]||0)+1}
+  if(s.pile>0)msg('กระเป๋าเต็ม');
+}
+function throwIt(key,qty){
+  const n=Math.min(qty,S.bag[key]||0);if(n<=0)return;
+  if(!S.pot)S.pot={items:{},start:S.t,end:S.t+COOK};
+  S.pot.items[key]=(S.pot.items[key]||0)+n;
+  S.bag[key]-=n;if(S.bag[key]<=0)delete S.bag[key];
+}
+function sellAll(){
+  const v=Object.values(S.dishes).reduce((a,d)=>a+d.v,0),n=Object.values(S.dishes).reduce((a,d)=>a+d.n,0);
+  if(!n)return;S.coins+=v;S.sold+=n;S.dishes={};msg(`💰 ขาย ${n} จาน +${fmt(v)}`);
+}
+function buyAnimal(k){
+  const i=emptyIdx();if(i<0){msg('ไม่มีช่องว่าง');return}
+  if(S.coins<30){msg('เงินไม่พอ');return}
+  S.coins-=30;S.slots[i]={k,pile:0,prog:0,busy:false};
+}
+function buySlot(){
+  if(S.unlocked>=MAXSLOTS)return;
+  const c=slotCost();if(S.coins<c){msg('เงินไม่พอ');return}
+  S.coins-=c;S.unlocked++;
+}
+const slotCost=()=>Math.round(80*Math.pow(2.5,S.unlocked-START_SLOTS));
+const topTier=()=>S.breed.length?Math.max(...S.breed.map(i=>A[S.slots[i].k].tier)):0;
+const breedCost=()=>40*(1+topTier());
+const breedTime=()=>20+20*topTier();
+function toggleBreed(i){
+  const s=S.slots[i];if(!s||s.busy)return;
+  const j=S.breed.indexOf(i);
+  if(j>=0)S.breed.splice(j,1);else if(S.breed.length<2)S.breed.push(i);
+}
+function startBreed(){
+  if(S.job||S.breed.length<2)return;
+  const c=breedCost();if(S.coins<c){msg('เงินไม่พอสำหรับการผสม');return}
+  const [ia,ib]=S.breed,a=S.slots[ia],b=S.slots[ib];
+  S.coins-=c;a.busy=true;b.busy=true;
+  S.job={ia,ib,ka:a.k,kb:b.k,start:S.t,end:S.t+breedTime()};
+  S.breed=[];mode=false;
+}
+function act(a,v){
+  switch(a){
+  case'collect':collect(+v);break;
+  case'collectAll':for(let i=0;i<S.unlocked;i++)collect(i);break;
+  case'slot':{const i=+v;if(mode)toggleBreed(i);else collect(i);break}
+  case'mode':mode=!mode;S.breed=[];break;
+  case'throw':throwIt(v,S.throwQty);break;
+  case'throwAll':for(const k of Object.keys(S.bag))throwIt(k,1e9);break;
+  case'qty':S.throwQty=+v;break;
+  case'sellAll':sellAll();break;
+  case'buy':buyAnimal(v);break;
+  case'buySlot':buySlot();break;
+  case'breed':startBreed();break;
+  case'reset':try{localStorage.removeItem(KEY)}catch(e){}S=fresh();break;
+  }
+  sim(0);save();lastSig='';render();
+}
+
+/* ---------- render ---------- */
+const perSec=()=>S.slots.reduce((a,s,i)=>a+(s&&i<S.unlocked&&!s.busy?A[s.k].val/A[s.k].iv:0),0);
+const sig=()=>JSON.stringify([S.unlocked,S.slots,S.bag,S.pot&&Object.keys(S.pot.items).map(k=>k+S.pot.items[k]),S.dishes,S.breed,S.job&&1,S.waiting,mode,S.throwQty,Math.floor(S.coins),S.sold]);
+function slotHTML(i){
+  if(i>=S.unlocked){
+    if(i===S.unlocked&&S.unlocked<MAXSLOTS)return`<button class="slot lock" data-a="buySlot" data-cost="${slotCost()}">＋ ช่อง<br>🪙${fmt(slotCost())}</button>`;
+    return`<div class="slot lock">🔒</div>`;
+  }
+  const s=S.slots[i];
+  if(!s)return`<div class="slot" style="border-style:dashed;color:var(--muted)">ว่าง</div>`;
+  const a=A[s.k],picked=S.breed.includes(i);
+  return`<button class="slot has ${s.busy?'br':''} ${picked?'pick':''}" data-a="slot" data-v="${i}" ${s.busy?'disabled':''}>
+    <span class="em">${a.e}</span><span class="sub">${a.n}</span>
+    ${s.pile?`<span class="pl">${s.pile}</span>`:''}
+    ${s.busy?'<span class="sub">ผสมอยู่</span>':`<div class="bar"><i data-p="${i}"></i></div>`}</button>`;
+}
+function render(){
+  const app=document.getElementById('app');
+  const dishes=Object.keys(S.dishes).sort((x,y)=>y-x).map(t=>`<div class="line"><span>${LADDER[t][2]} ${LADDER[t][1]} ×${S.dishes[t].n}</span><span class="sub">🪙${fmt(S.dishes[t].v)}</span></div>`).join('')||'<div class="sub">ยังไม่มีอาหารขาย</div>';
+  const dishTotal=Object.values(S.dishes).reduce((a,d)=>a+d.v,0),dishN=Object.values(S.dishes).reduce((a,d)=>a+d.n,0);
+  const chips=Object.keys(S.bag).map(k=>`<button class="chip" data-a="throw" data-v="${k}" title="มูลค่า ${ING[k].v}">${ING[k].e}×${S.bag[k]}</button>`).join('')||'<span class="sub">กระเป๋าว่าง</span>';
+  const qty=[[1,'×1'],[5,'×5'],[1e9,'ทั้งหมด']].map(([n,l])=>`<button class="btn ${S.throwQty===n?'pri':''}" data-a="qty" data-v="${n}">${l}</button>`).join(' ');
+  const pot=S.pot?`<div class="pot on"><div class="items">${Object.keys(S.pot.items).map(k=>ING[k].e+'×'+S.pot.items[k]).join(' ')}</div><div class="t" data-t="${S.pot.end}"></div><div class="bar" style="width:86%"><i data-pot="1"></i></div><span class="sub">โยนเพิ่มได้จนกว่าจะเสร็จ</span></div>`:`<div class="pot"><span class="sub">หม้อว่าง โยนของเพื่อเริ่มปรุง</span></div>`;
+  const job=S.job?`<div class="line"><span>🐣 กำลังผสม…</span><span class="t" data-t="${S.job.end}"></span></div><div class="bar w"><i data-job="1"></i></div>`:'';
+  const canBreed=!S.job&&S.breed.length===2;
+  const sel=S.breed.map(i=>A[S.slots[i].k].e).join(' + ')||'เลือกสัตว์ 2 ตัว';
+  app.innerHTML=`
+  <div class="box wide"><div class="row" style="justify-content:space-between"><div><div class="sub">เงิน</div><div class="big">🪙 <span id="coins">${fmt(S.coins)}</span></div><div class="sub">~${fmt(perSec())}/วิ</div></div>
+    <button class="btn" data-a="reset">เริ่มใหม่</button></div>
+    <div class="msg">${S.msgs.map(m=>`<div>${m}</div>`).join('')}</div></div>
+  <div class="box"><div class="row" style="justify-content:space-between"><h3>ฟาร์ม</h3><button class="btn" data-a="collectAll">📦 เก็บทั้งหมด</button></div>
+    <div class="farm">${Array.from({length:MAXSLOTS},(_,i)=>slotHTML(i)).join('')}</div></div>
+  <div class="box"><h3>โยนลงหม้อ</h3>
+    <div class="row">${qty}<span style="flex:1"></span><button class="btn pri" data-a="throwAll" ${bagN()?'':'disabled'}>โยนทั้งหมด</button></div>
+    <div class="chips">${chips}</div>${pot}</div>
+  <div class="box"><div class="row" style="justify-content:space-between"><h3>ขาย</h3><button class="btn pri" data-a="sellAll" ${dishN?'':'disabled'}>ขายทั้งหมด 🪙${fmt(dishTotal)}</button></div>
+    ${dishes}</div>
+  <div class="box"><div class="row" style="justify-content:space-between"><h3>ผสมพันธุ์</h3><button class="btn ${mode?'on':''}" data-a="mode">${mode?'เลือกสัตว์ (เปิดอยู่)':'โหมดเลือกผสม'}</button></div>
+    <div class="sub">${mode?'แตะสัตว์ในฟาร์ม 2 ตัว':''} ${sel}</div>
+    <div class="row"><button class="btn pri" data-a="breed" ${canBreed&&S.coins>=breedCost()?'':'disabled'}>ผสม 🪙${fmt(breedCost())}</button><span class="sub">ใช้เวลา ${fmtT(breedTime())}</span></div>
+    ${job}</div>
+  <div class="box"><h3>ซื้อ</h3>
+    <div class="row">${SHOP.map(k=>`<button class="btn" data-a="buy" data-v="${k}" ${S.coins>=30&&emptyIdx()>=0?'':'disabled'}>${A[k].e} ${A[k].n} 🪙30</button>`).join('')}</div>
+    <div class="sub">${S.waiting.length?`รอที่ว่าง: ${S.waiting.map(k=>A[k].e).join(' ')}`:'&nbsp;'}</div></div>`;
+  tickUI();
+}
+function tickUI(){
+  const c=document.getElementById('coins');if(c)c.textContent=fmt(S.coins);
+  document.querySelectorAll('[data-p]').forEach(el=>{const s=S.slots[+el.dataset.p];if(s)el.style.width=Math.min(100,100*s.prog/A[s.k].iv)+'%'});
+  document.querySelectorAll('[data-pot]').forEach(el=>{if(S.pot)el.style.width=Math.min(100,100*(S.t-S.pot.start)/COOK)+'%'});
+  document.querySelectorAll('[data-job]').forEach(el=>{if(S.job)el.style.width=Math.min(100,100*(S.t-S.job.start)/Math.max(1,S.job.end-S.job.start))+'%'});
+  document.querySelectorAll('[data-t]').forEach(el=>{el.textContent=fmtT(+el.dataset.t-S.t)});
+}
+document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(el&&!el.disabled)act(el.dataset.a,el.dataset.v)});
+
+/* ---------- boot + loop ---------- */
+if(!load())S=fresh();
+S.waiting=S.waiting||[];S.found=S.found||{};
+{const el=(Date.now()-S.lastReal)/1000;if(el>10)simSpan(Math.min(el,3*3600),1)}
+render();
+let last=performance.now(),sv=0;
+setInterval(()=>{
+  const now=performance.now(),dt=Math.min(600,(now-last)/1000);last=now;
+  simSpan(dt,.5);
+  const s=sig();if(s!==lastSig){lastSig=s;render()}else tickUI();
+  sv+=dt;if(sv>5){sv=0;save()}
+},250);
+window.__G={get S(){return S},act,simSpan,A,RECIPE,ING,LADDER,tierOf,render,setMode:v=>{mode=v}};
+})();
+</script>

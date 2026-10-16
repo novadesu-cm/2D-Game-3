@@ -95,6 +95,8 @@ textarea{width:100%;min-height:120px;background:var(--panel);color:var(--fg);bor
 #pop{position:fixed;z-index:70;width:280px;max-width:calc(100vw - 16px);background:var(--panel);border:2px solid var(--accent);border-radius:10px;padding:10px 12px;box-shadow:0 6px 20px rgba(0,0,0,.3);display:flex;flex-direction:column;gap:5px;font-size:12.5px}
 #pop .x{position:absolute;top:6px;right:6px}
 .sell{text-align:center;color:var(--muted);font-size:13px}
+.box.locked{opacity:.55;border-style:dashed}
+.chips{min-height:32px}
 .pots3{display:flex;flex-direction:column;gap:4px}
 .a-kit .kit{overflow-y:auto}
 .pot3{border:1px solid var(--line);border-radius:8px;padding:3px 8px;background:var(--panel);cursor:pointer;display:flex;flex-direction:column;gap:2px;font-size:12.5px}
@@ -218,7 +220,7 @@ const KEY='amf_proto_v4';
 let S, sel=null, tab='', zoneSel=0, speed=1, pressed=false;
 const fresh=()=>({v:3,t:0,coins:0,ess:0,unlocked:3,stashLvl:0,uid:1,farm:Array(12).fill(null),stash:[],away:[],
   codex:{},shiny:{},known:{},tried:{},nur:{a:null,b:null,end:null},crew:[],exp:null,pity:0,acts:0,explored:0,nursed:0,
-  bag:{},draft:[],throwQty:1,potSel:0,pots:[null,null,null,null],counter:{},dishes:{},u:{},sat:{},order:null,orderNext:15,orders:0,demand:[],demandEnd:0,
+  bag:{},draft:[],throwQty:1,potSel:0,seen:{},hintStart:{},unlock:{},pots:[null,null,null,null],counter:{},dishes:{},u:{},sat:{},order:null,orderNext:15,orders:0,demand:[],demandEnd:0,
   droneT:0,cashT:0,chefWait:0,sales:[],sold:0,earned:0,mCollect:0,mCook:0,mSell:0,aCollect:0,aCook:0,aSell:0,
   lastPair:null,lastZone:0,auto:{nur:true,exp:true,rel:true},autoT:0,
   log:[],msgs:[],lastReal:Date.now(),created:Date.now()});
@@ -228,7 +230,7 @@ function save(){try{S.lastReal=Date.now();localStorage.setItem(KEY,JSON.stringif
 function init(){
   S=fresh();S.coins=60;
   [0,1,2].forEach((sp,i)=>{S.farm[i]=mk(sp);S.codex[sp]=1});
-  S.stash.push(mk(0));   // a spare chicken: send it exploring or breed it right away
+  S.farm[3]=mk(0);S.unlocked=4;   // a 4th animal on the farm (the stash is locked at the start)
   rollDemand();
 }
 
@@ -321,7 +323,7 @@ function finishPot(k){
   const c=S.counter[key]||(S.counter[key]={n:0,sum:0});c.n++;c.sum+=val;S.pots[k]=null;
   if(!S.dishes[key]){S.dishes[key]=1;log(`ค้นพบเมนู ${LADDER[t][2]} ${LADDER[t][1]}`)}
 }
-const isDemand=key=>S.demand.includes(key);
+const isDemand=key=>!!(S.unlock&&S.unlock.orders)&&S.demand.includes(key);
 function rollDemand(){const hi=Math.max(0,...Object.keys(S.dishes).filter(k=>k[0]==='D').map(k=>+k.slice(1)));const ks=[];for(let i=0;i<=Math.min(LADDER.length-1,hi+2);i++)ks.push('D'+i);S.demand=[];while(S.demand.length<Math.min(3,ks.length)){const k=ks[Math.floor(Math.random()*ks.length)];if(!S.demand.includes(k))S.demand.push(k)}S.demandEnd=S.t+DEMAND_LEN}
 /* ตลาดอิ่ม: ขายเมนูเดิมซ้ำๆ ราคาตกชิ้นละ 7% (ต่ำสุด −50%) แล้วค่อยๆ ฟื้นเมื่อพัก */
 const satF=k=>Math.max(.5,1-(S.sat[k]||0));
@@ -391,7 +393,7 @@ function sim(dt){
   if(S.order){
     if(S.t>=S.order.end){log(`📋 ออเดอร์ ${dinfo(S.order.key)[1]} หมดเวลา (ไม่มีโทษ)`);S.order=null;S.orderNext=S.t+10}
     else if(U('cash')&&orderReady())fulfillOrder(false);
-  }else if(S.t>=S.orderNext)rollOrder();
+  }else if(S.unlock.orders&&S.t>=S.orderNext)rollOrder();
   // demand + sales window
   if(S.t>=S.demandEnd)rollDemand();
   while(S.sales.length&&S.sales[0].t<S.t-180)S.sales.shift();
@@ -416,6 +418,7 @@ function nurStart(){
 function nurFinish(){
   const n=S.nur;[n.a,n.b].forEach(u=>{const f=find(u);if(f)giveBack(f.a)});
   const a=mk(n.res);a.shiny=n.shiny;const isRecipe=RC[n.key]===n.res;
+  {const [kx,ky]=n.key.split('-');if(RC[n.key]===undefined&&kx!==ky&&S.flagNoRecipe===undefined)S.flagNoRecipe=S.t}
   S.stash.push(a);discover(n.res,n.shiny);S.tried[n.key]=n.res;
   if(isRecipe)S.known[n.key]=1;
   log(`ไข่ฟัก: ${SP[n.res].em} ${SP[n.res].n}${n.shiny?' ✨':''}${isRecipe?' (ตรงสูตร)':''}`);
@@ -453,14 +456,22 @@ function expFinish(){
 }
 
 /* ---------- tick ---------- */
+function checkUnlocks(){
+  const u=S.unlock,tell=(k,m)=>{if(!u[k]){u[k]=1;log(m);return true}return false};
+  let c=false;
+  if(S.sold>=3||S.nursed>0)c=tell('nur','🔓 ปลดล็อก โรงผสม และ ช่องเก็บสัตว์')||c;
+  if(S.nursed>0)c=tell('exp','🔓 ปลดล็อก การสำรวจ')||c;
+  if(S.dishes.D2||S.orders>0)c=tell('orders','🔓 ปลดล็อก ออเดอร์ และ ลูกค้าต้องการ')||c;
+  return c;
+}
 function step(){
-  let ch=false;
+  let ch=checkUnlocks();
   if(S.nur.end!=null&&S.t>=S.nur.end&&S.stash.length<stashCap()){nurFinish();ch=true}
   if(S.exp&&S.t>=S.exp.end){expFinish();ch=true}
   return ch;
 }
 let last=performance.now(), sv=0, lastSig='';
-const sig=()=>[bagTotal(),counterTotal(),Math.floor(S.coins),S.pots.map(p=>p?1:0).join(''),S.farm.map(a=>a?a.pile:'-').join(','),S.stash.length].join('|');
+const sig=()=>[(curHint()||{}).id,Object.keys(S.unlock).length,bagTotal(),counterTotal(),Math.floor(S.coins),S.pots.map(p=>p?1:0).join(''),S.farm.map(a=>a?a.pile:'-').join(','),S.stash.length].join('|');
 function loop(){
   const now=performance.now(),dt=Math.min(600,(now-last)/1000);last=now;
   if(pressed&&!drag&&now-pressedAt>20000)pressed=false;
@@ -551,10 +562,11 @@ function act(a,v){
   case'sellRaw':{const v2=rawValue();if(v2>0){S.coins+=v2;S.earned+=v2;S.sales.push({t:S.t,v:v2});S.bag={};S.mSell++}break}
   case'up':{const u=UPS.find(x=>x.k===v);if(u&&canBuy(u)){const c=upCost(u);if(u.cur==='e'){S.ess-=c;S.stashLvl++}else{S.coins-=c;S.u[u.k]=U(u.k)+1}log(`อัปเกรด ${u.n} → ${U(u.k)}`)}break}
   case'speed':speed=v;break;
-  case'cheat':if(v==='c')S.coins+=Math.max(10000,S.coins);else if(v==='e')S.ess+=20;else if(v==='t')simSpan(3600,1);break;
+  case'cheat':if(v==='u')S.unlock={nur:1,exp:1,orders:1};else if(v==='c')S.coins+=Math.max(10000,S.coins);else if(v==='e')S.ess+=20;else if(v==='t')simSpan(3600,1);break;
   case'reset':try{localStorage.removeItem(KEY)}catch(e){}init();sel=null;tab='';break;
   case'copy':{const t=document.getElementById('rep');if(t){t.select();try{navigator.clipboard.writeText(t.value)}catch(e){document.execCommand&&document.execCommand('copy')}}return}
   }
+  if(sel!=null)S.seen.tapped=1;
   step();lastSig=sig();render();
 }
 // duplicates beyond the best 3 of each species in the stash (shiny and busy animals are never included)
@@ -601,11 +613,11 @@ function infoHTML(f){
   if(a.busy==='prep')b.push(`<span class="sub">เตรียมอยู่ในกล่องโรงผสม/สำรวจ (ลากไปวางที่อื่นเพื่อยกเลิก)</span>`);
   else if(a.busy)b.push(`<span class="sub">🔒 กำลังทำงาน จัดการไม่ได้จนกว่าจะเสร็จ</span>`);
   else{
-    if(f.loc==='farm')b.push(`<button class="btn sm" data-a="toStash" ${S.stash.length>=stashCap()?'disabled':''}>เก็บเข้าช่องเก็บ</button>`);
+    if(f.loc==='farm'&&S.unlock.nur)b.push(`<button class="btn sm" data-a="toStash" ${S.stash.length>=stashCap()?'disabled':''}>เก็บเข้าช่องเก็บ</button>`);
     else b.push(`<button class="btn sm" data-a="toFarm" ${S.farm.findIndex((x,j)=>!x&&j<S.unlocked)<0?'disabled':''}>ลงฟาร์ม</button>`);
-    b.push(`<button class="btn sm" data-a="nurPut" ${(S.nur.end!=null||(S.nur.a&&S.nur.b))?'disabled':''}>ใส่โรงผสม</button>`);
-    b.push(`<button class="btn sm" data-a="crewAdd" ${S.exp||S.crew.length>=3?'disabled':''}>เป็นลูกเรือ</button>`);
-    if(a.star<3)b.push(`<button class="btn sm" data-a="merge" ${same>=3?'':'disabled'}>รวมดาว ${Math.min(same,3)}/3</button>`);
+    if(S.unlock.nur)b.push(`<button class="btn sm" data-a="nurPut" ${(S.nur.end!=null||(S.nur.a&&S.nur.b))?'disabled':''}>ใส่โรงผสม</button>`);
+    if(S.unlock.exp)b.push(`<button class="btn sm" data-a="crewAdd" ${S.exp||S.crew.length>=3?'disabled':''}>เป็นลูกเรือ</button>`);
+    if(a.star<3&&S.unlock.nur)b.push(`<button class="btn sm" data-a="merge" ${same>=3?'':'disabled'}>รวมดาว ${Math.min(same,3)}/3</button>`);
     b.push(`<button class="btn sm" data-a="release">ปล่อย +🪙${fmt(V[r]*a.star*4)}</button>`);
   }
   return`<button class="btn sm x" data-a="sel" data-v="${a.id}" title="ปิด">✕</button>
@@ -627,16 +639,31 @@ function placePop(){
   }
   pop.style.left=left+'px';pop.style.top=top+'px';pop.style.visibility='visible';
 }
-function hintHTML(){
-  let h='';
-  const piles=S.farm.reduce((n,a)=>n+(a?a.pile:0),0);
-  if(!S.sold)h=piles||bagTotal()||S.draft.length||Object.keys(S.counter).length||S.pots.some(Boolean)
-    ?'กด 🧺 เก็บทั้งหมด → "โยนทั้งหมด" ลงหม้อ (รอ 5 วิ ใส่เพิ่มได้) → "ขายทั้งหมด" · ยิ่งโยนเยอะ ยิ่งได้เมนูแพง'
-    :'รอสักครู่ สัตว์ในฟาร์มจะผลิตของเป็นกองหน้าช่อง (ราว 3 วินาที)';
-  else if(!S.nursed&&!S.nur.end)h='ผสมสัตว์: ลาก 🐔 สองตัว (ฟาร์ม+ช่องเก็บ) หรือ 🐔 กับ 🦆 ไปวางในกล่องโรงผสม แล้วกด "เริ่มผสม" · สูตรตายตัว สลับพ่อแม่ได้';
-  else if(!S.explored)h='ลากสัตว์ตัวไหนก็ได้ (จากฟาร์มหรือช่องเก็บ) ไปวางในกล่องสำรวจ แล้วกด "ไป" เพื่อหาสัตว์ใหม่';
-  return h?`<div class="hintbar">${h}</div>`:'';
+/* คำแนะนำครั้งเดียว: แสดงทีละอัน เมื่อถึงจังหวะที่ต้องใช้ และไม่กลับมาอีกเมื่อผู้เล่นทำสำเร็จ (เปิดดูทั้งหมดซ้ำได้ที่ปุ่ม ❔) */
+const anyPile=()=>S.farm.some(a=>a&&a.pile>0);
+const HINTS=[
+ {id:'wait',when:()=>!S.sold&&!S.mCollect&&!anyPile()&&!bagTotal()&&!S.pots.some(Boolean),done:()=>anyPile()||bagTotal()>0,text:'รอสักครู่ สัตว์กำลังผลิตของ'},
+ {id:'collect',when:()=>anyPile(),done:()=>S.mCollect>0,text:'กด 🧺 เก็บทั้งหมด'},
+ {id:'throw',when:()=>bagTotal()>0,done:()=>S.mCook>0,text:'กดไอคอนวัตถุดิบ หรือ "โยนทั้งหมด" ลงหม้อ (รวมมูลค่าถึง 10 ถึงจะได้อาหาร)'},
+ {id:'sell',when:()=>counterTotal()>0,done:()=>S.sold>0,text:'กด "ขายทั้งหมด"'},
+ {id:'bigger',when:()=>S.sold>0,done:()=>Object.keys(S.dishes).length>=2,ttl:90,text:'รอให้ของเต็มกระเป๋าแล้วโยนทีเดียว ยิ่งโยนเยอะ ยิ่งได้อาหารแพง'},
+ {id:'tap',when:()=>S.sold>=2,done:()=>!!S.seen.tapped,ttl:60,text:'แตะสัตว์เพื่อดูข้อมูล ลากเพื่อย้าย'},
+ {id:'nur',when:()=>S.unlock.nur&&!S.nursed,done:()=>S.nursed>0,text:'ผสมสัตว์: ลากสัตว์ 2 ตัวไปวางในกล่องโรงผสม แล้วกด "เริ่มผสม"'},
+ {id:'norecipe',when:()=>S.flagNoRecipe!==undefined,done:()=>false,ttl:20,text:'คู่นี้ไม่มีสูตร ได้พ่อหรือแม่แบบสุ่ม (สลับลำดับก็เหมือนเดิม) สูตรตายตัว ลองคู่อื่นดู'},
+ {id:'exp',when:()=>S.unlock.exp&&!S.explored,done:()=>S.explored>0,text:'สำรวจ: ลากสัตว์ไปวางในกล่องสำรวจ แล้วกด "ไป"'},
+ {id:'order',when:()=>!!S.order&&!S.orders,done:()=>S.orders>0,ttl:60,text:'ออเดอร์: ปรุงเมนูที่สั่ง แล้วกด "ส่ง" จ่ายแพงกว่าปกติ (ของที่ต้องใช้จะถูกกันไว้)'}];
+function curHint(){
+  for(const h of HINTS){
+    if(S.seen[h.id])continue;
+    if(h.done()){S.seen[h.id]=1;continue}
+    if(!h.when())continue;
+    if(S.hintStart[h.id]===undefined)S.hintStart[h.id]=S.t;
+    if(h.ttl&&S.t-S.hintStart[h.id]>h.ttl){S.seen[h.id]=1;continue}
+    return h;
+  }
+  return null;
 }
+function hintHTML(){const h=curHint();return h?`<div class="hintbar">${h.text}</div>`:''}
 function statusHTML(){
   const bt=bagTotal(),bc=bagCap();
   let h=`<span class="mb">🎒 ${bt}/${bc}<span class="bar ${bt>=bc?'full':''}"><i style="width:${100*bt/bc}%"></i></span></span>`;
@@ -645,7 +672,7 @@ function statusHTML(){
 function toolbarHTML(){
   const piles=S.farm.reduce((n,a)=>n+(a?a.pile:0),0);
   return`<div class="btns" style="align-items:center"><button class="btn pri" data-a="collectAll" ${piles&&bagTotal()<bagCap()?'':'disabled'}>🧺 เก็บทั้งหมด (${piles})</button>
-  <span class="sub">${U('drone')?'🚁':''} ${U('chef')?'👨‍🍳':''} ${U('cash')?'🧾':''}</span><span class="sub">แตะสัตว์เพื่อดูข้อมูล · ลากเพื่อย้าย</span></div>`;
+  <span class="sub">${U('drone')?'🚁':''} ${U('chef')?'👨‍🍳':''} ${U('cash')?'🧾':''}</span></div>`;
 }
 /* skill tree: four lines, each unlocked left to right (a node needs the one before it to be bought at least once) */
 const TREE=[
@@ -674,6 +701,13 @@ function upgradesHTML(){
 }
 function panelHTML(){
   if(tab==='up')return upgradesHTML();
+  if(tab==='help')return`<h3>วิธีเล่น</h3><ul class="list" style="color:var(--fg);font-size:13px;display:flex;flex-direction:column;gap:6px">
+    <li><b>เก็บ</b> สัตว์ผลิตของเป็นกองหน้าช่อง กด 🧺 เก็บทั้งหมด (กองเต็มแล้วสัตว์หยุดผลิต)</li>
+    <li><b>ปรุง</b> โยนวัตถุดิบลงหม้อ หม้อเดือด 5 วินาที โยนเพิ่มได้ ยิ่งมูลค่ารวมสูงยิ่งได้อาหารแพง ต้องรวมถึง 10 ถึงจะได้อาหาร ถ้าไม่ถึงของจะคืนเข้ากระเป๋า</li>
+    <li><b>ขาย</b> กด "ขายทั้งหมด" หรือลากเมนูไปช่องขาย ขายเมนูเดิมซ้ำๆ ราคาตก แล้วค่อยๆ ฟื้น</li>
+    <li><b>ผสมสัตว์</b> ลากสัตว์ 2 ตัวไปวางในกล่องโรงผสม แล้วกด "เริ่มผสม" สูตรตายตัว สลับลำดับก็เหมือนเดิม คู่ที่ไม่มีสูตรจะได้พ่อหรือแม่แบบสุ่ม ตัวที่ผสมจะออกจากช่องและกลับที่เดิมเมื่อเสร็จ</li>
+    <li><b>สำรวจ</b> ลากสัตว์ไปวางในกล่องสำรวจ กลับมาพร้อมสัตว์ใหม่ โซนไกลปลดล็อกเมื่อค้นพบสัตว์ครบตามจำนวน</li>
+    <li><b>ดูข้อมูลสัตว์</b> แตะที่ตัวสัตว์ <b>ย้าย</b> ลากไปวาง (ปล่อยสัตว์ ลากไปแถบ 🗑)</li></ul>`;
   if(tab==='codex'){
     const cells=SP.map((s,i)=>{
       if(S.codex[i]){const pr=PR[i];return`<div class="cell" style="--rc:var(--r${s.rar})"><span class="em">${s.em}</span><span class="nm">${s.n}</span><span class="meta">${S.shiny[i]?'✨':''}${pr?pr[2]:''}</span><span class="hintline">${s.par?SP[s.par[0]].n+'+'+SP[s.par[1]].n:'เจอในธรรมชาติ'}</span></div>`}
@@ -692,7 +726,7 @@ function panelHTML(){
   const sp_=[1,10,60,300].map(x=>`<button class="btn ${speed===x?'pri':''}" data-a="speed" data-v="${x}">×${x}</button>`).join('');
   return`<h3>ห้องทดสอบ</h3><div class="sub">ใช้เร่งเวลา/โกงเพื่อลองให้ถึงช่วงท้ายเกมเร็วๆ ตอนเล่นจริงใช้ ×1</div>
   <div class="btns">${sp_}</div>
-  <div class="btns"><button class="btn" data-a="cheat" data-v="c">โกงเหรียญ ×2</button><button class="btn" data-a="cheat" data-v="e">+20 🌿</button><button class="btn" data-a="cheat" data-v="t">ข้ามเวลา 1 ชม.</button><button class="btn" data-a="reset">เริ่มใหม่</button></div>
+  <div class="btns"><button class="btn" data-a="cheat" data-v="u">ปลดล็อกทุกอย่าง</button><button class="btn" data-a="cheat" data-v="c">โกงเหรียญ ×2</button><button class="btn" data-a="cheat" data-v="e">+20 🌿</button><button class="btn" data-a="cheat" data-v="t">ข้ามเวลา 1 ชม.</button><button class="btn" data-a="reset">เริ่มใหม่</button></div>
   <div class="sub">รายงานการเล่น (กดคัดลอกแล้วส่งให้ผู้พัฒนา)</div><textarea id="rep" readonly>${report()}</textarea><button class="btn" data-a="copy">คัดลอกรายงาน</button>`;
 }
 function report(){
@@ -711,17 +745,17 @@ function report(){
 const autoBtn=(k,u)=>U(u)?`<button class="btn sm ${S.auto[k]?'on':''}" data-a="tgl" data-v="${k}">🔁 อัตโนมัติ ${S.auto[k]?'เปิด':'ปิด'}</button>`:'';
 function kitchenCard(){
   const q=S.throwQty||1,tp=targetPot();
-  const bagChips=Object.keys(S.bag).map(k=>`<button class="chip" title="${PR[k][1]} มูลค่า ${V[SP[k].rar]}" data-a="throw" data-v="${k}" data-drag="item:${k}" data-gh="${PR[k][2]}">${PR[k][2]}×${S.bag[k]} <span class="sub">${V[SP[k].rar]}</span></button>`).join('')||'<span class="sub">กระเป๋าว่าง (กด 🧺 เก็บทั้งหมด)</span>';
+  const bagChips=Object.keys(S.bag).map(k=>`<button class="chip" title="${PR[k][1]} มูลค่า ${V[SP[k].rar]}" data-a="throw" data-v="${k}" data-drag="item:${k}" data-gh="${PR[k][2]}">${PR[k][2]}×${S.bag[k]} <span class="sub">${V[SP[k].rar]}</span></button>`).join('')||'';
   const qty=[[1,'×1'],[5,'×5'],[999,'ทั้งหมด']].map(([n,l])=>`<button class="btn sm ${q===n?'pri':''}" data-a="qty" data-v="${n}">${l}</button>`).join('');
   const pots=Array.from({length:potN()},(_,i)=>{
     const p=S.pots[i],cls=i===tp?'pot3 sel':'pot3';
-    if(!p)return`<div class="${cls}" data-drop="pot:${i}" data-a="potsel" data-v="${i}"><span class="sub">หม้อ ${i+1}: ว่าง${i===tp?` · โยนของลงมา (รวมถึง ${LADDER[0][0]} ได้ ${LADDER[0][2]} ${LADDER[0][1]})`:''}</span></div>`;
+    if(!p)return`<div class="${cls}" data-drop="pot:${i}" data-a="potsel" data-v="${i}"><span class="sub">หม้อ ${i+1}: ว่าง${i===tp&&!Object.keys(S.dishes).length?` · โยนของลงมา (รวมถึง ${LADDER[0][0]} ได้ ${LADDER[0][2]} ${LADDER[0][1]})`:''}</span></div>`;
     const T=potT(p),t=tierOf(T),nx=LADDER[t+1],done=S.t>=p.end;
     const items=Object.keys(p.items).map(k=>`${PR[k][2]}×${p.items[k]}`).join(' ');
     return`<div class="${cls}" data-drop="pot:${i}" data-a="potsel" data-v="${i}"><div class="row nowrap"><span style="flex:1">หม้อ ${i+1}: ${items}</span>${done?'<span class="badge">รอที่ว่างในตู้โชว์</span>':`<b class="t" data-s="${p.start}" data-e="${p.end}"></b>`}</div>
       <div class="sub">รวม ${fmt(T)} → <b>${t>=0?`${LADDER[t][2]} ${LADDER[t][1]}`:'ยังไม่ถึงเมนูแรก'}</b>${nx?` · อีก ${fmt(nx[0]-T)} ได้ ${nx[2]} ${nx[1]}`:''}</div>${done?'':`<div class="bar" data-s="${p.start}" data-e="${p.end}"><i></i></div>`}</div>`;
   }).join('');
-  const rows=Object.keys(S.counter).sort((a,b)=>dishAvg(b)-dishAvg(a)).map(k=>{const sat=Math.round(Math.min(.5,S.sat[k]||0)*100);return`<div class="line" data-drag="dish:${k}" data-gh="${dinfo(k)[1]}"><span class="l">${dinfo(k)[1]} ${dinfo(k)[0]} ×${S.counter[k].n} · 🪙${fmt(dishAvg(k))} ${isDemand(k)?'<span class="tag">★×1.6</span>':''}${sat>=3?`<span class="tag">🔻ตลาดอิ่ม −${sat}%</span>`:''}${reserved(k)?'<span class="tag">📋กันไว้ส่งออเดอร์</span>':''}</span><button class="btn sm" data-a="sellDish" data-v="${k}" ${sellable(k)?'':'disabled'}>ขาย</button></div>`}).join('')||'<div class="sub">ยังไม่มีอาหารในตู้โชว์</div>';
+  const rows=Object.keys(S.counter).sort((a,b)=>dishAvg(b)-dishAvg(a)).map(k=>{const sat=Math.round(Math.min(.5,S.sat[k]||0)*100);return`<div class="line" data-drag="dish:${k}" data-gh="${dinfo(k)[1]}"><span class="l">${dinfo(k)[1]} ${dinfo(k)[0]} ×${S.counter[k].n} · 🪙${fmt(dishAvg(k))} ${isDemand(k)?'<span class="tag">★×1.6</span>':''}${sat>=3?`<span class="tag">🔻ตลาดอิ่ม −${sat}%</span>`:''}${reserved(k)?'<span class="tag">📋กันไว้ส่งออเดอร์</span>':''}</span><button class="btn sm" data-a="sellDish" data-v="${k}" ${sellable(k)?'':'disabled'}>ขาย</button></div>`}).join('')||'';
   const dem=S.demand.map(k=>`<span title="${dinfo(k)[0]}">${dinfo(k)[1]}</span>`).join(' ');
   const o=S.order,ord=o?`<div class="row nowrap" style="font-size:12px"><span style="flex:1">📋 ออเดอร์ ${dinfo(o.key)[1]} ${dinfo(o.key)[0]} ×${o.n} (มี ${S.counter[o.key]?S.counter[o.key].n:0}) จ่าย ×${ORDER_MULT} · เหลือ <b class="t" data-s="${o.start}" data-e="${o.end}"></b></span><button class="btn sm pri" data-a="order" ${orderReady()?'':'disabled'}>ส่ง</button></div>`:`<div class="sub">📋 รอออเดอร์ใหม่…</div>`;
   return`<div class="box st kit"><div class="row"><h3>🍲 ครัว</h3><span style="flex:1"></span><button class="btn sm" data-a="sellRaw" ${bagTotal()?'':'disabled'}>ขายของดิบ 🪙${fmt(rawValue())}</button></div>
@@ -730,8 +764,8 @@ function kitchenCard(){
   <div class="dz potz" data-drop="pot"><div class="pots3">${pots}</div></div>
   <div class="row"><h3>ตู้โชว์ ${counterTotal()}/${showCap()}</h3><span style="flex:1"></span><button class="btn sm pri" data-a="sellAll" ${sellAllValue()>0?'':'disabled'}>ขายทั้งหมด 🪙${fmt(sellAllValue())}</button></div>
   <div class="counter">${rows}</div>
-  <div class="dz sell" data-drop="sell">💰 ลากเมนูมาวางที่นี่เพื่อขาย</div>
-  <div class="sub">ลูกค้าต้องการ (×1.6) ${dem} · เปลี่ยนใน <b class="t" data-s="${S.demandEnd-DEMAND_LEN}" data-e="${S.demandEnd}"></b></div>${ord}</div>`;
+  <div class="dz sell" data-drop="sell">💰 ลากมาขาย</div>
+  ${S.unlock.orders?`<div class="sub" title="เมนูที่ลูกค้าต้องการขายได้ราคา ×1.6">ลูกค้าต้องการ ${dem} · เปลี่ยนใน <b class="t" data-s="${S.demandEnd-DEMAND_LEN}" data-e="${S.demandEnd}"></b></div>${ord}`:`<div class="sub">🔒 ออเดอร์ · ลูกค้าต้องการ: ทำเมนู ${LADDER[2][2]} ${LADDER[2][1]} (รวมถึง ${LADDER[2][0]})</div>`}</div>`;
 }
 function nurCard(){
   const n=nurInfo(),slot=u=>{const f=u&&find(u);return f?cell(f.a,'sel',f.a.id,'',true):`<div class="cell sm empty">＋</div>`};
@@ -744,7 +778,7 @@ function nurCard(){
     info=`<span class="sub" style="flex:1">${RAR[n.tier]} · 🪙${fmt(n.cost)} · ${fmtT(n.time)} · ✨${Math.round(shinyChance(n.A,n.B)*100)}%${(n.A.shiny||n.B.shiny)?' (สืบสีพิเศษ)':''}</span>`;
     btns=`<button class="btn sm pri" data-a="nurStart" data-cost="${n.cost}" ${S.coins>=n.cost?'':'disabled'}>เริ่มผสม</button><button class="btn sm" data-a="nurCancel">ยกเลิก</button>`;
   }else if(S.nur.a||S.nur.b){info='<span style="flex:1"></span>';btns=`<button class="btn sm" data-a="nurCancel">ยกเลิก</button>`}
-  else info=`<span class="sub" style="flex:1">ลากสัตว์ 2 ตัวมาวางที่นี่ (ตัวจะออกจากฟาร์มจนกว่าจะเสร็จ)</span>`;
+  else info=`<span class="sub" style="flex:1">${S.nursed?'':'ลากสัตว์ 2 ตัวมาวาง'}</span>`;
   const rp=S.lastPair&&S.nur.end==null&&!S.nur.a&&!S.nur.b?`<button class="btn sm" data-a="nurRepeat">ซ้ำ ${SP[S.lastPair[0]].em}+${SP[S.lastPair[1]].em}</button>`:'';
   const last=Object.entries(S.tried).slice(-1).map(([k,r])=>{const [x,y]=k.split('-');return`ล่าสุด ${SP[x].em}+${SP[y].em} → ${SP[r].em}${RC[k]===undefined&&x!==y?' (ไม่ใช่สูตร)':''}`})[0]||'';
   return`<div class="box st" data-drop="nur"><div class="row"><h3>💞 โรงผสม</h3><span style="flex:1"></span>${autoBtn('nur','aNur')}</div>
@@ -759,7 +793,7 @@ function expCard(){
     body=`<div>${ZONES[e.zone].n}: ${e.crew.map(u=>{const f=find(u);return f?SP[f.a.sp].em:''}).join('')}</div><div class="bar" data-s="${e.start}" data-e="${e.end}"><i></i></div><div class="sub">กลับในอีก <b class="t" data-s="${e.start}" data-e="${e.end}"></b></div>`;
   }else{
     const z=ZONES[zoneSel],crew=[0,1,2].map(i=>{const f=S.crew[i]&&find(S.crew[i]);return f?cell(f.a,'sel',f.a.id,'',true):`<div class="cell sm empty">＋</div>`}).join('');
-    body=`<div class="pair">${crew}<span class="sub" style="flex:1">ลากสัตว์จากฟาร์มหรือช่องเก็บมาเป็นลูกเรือ (≤3) ออกไปจนกว่าจะกลับ</span></div>
+    body=`<div class="pair">${crew}<span class="sub" style="flex:1">${S.explored?'':'ลากสัตว์มาเป็นลูกเรือ (≤3)'}</span></div>
     <div class="btns"><button class="btn sm pri" data-a="expStart" ${S.crew.length&&codexN()>=z.need?'':'disabled'}>ไป ${fmtT(z.dur*(1-haste('S')))}</button><button class="btn sm" data-a="expRepeat">ส่งซ้ำ</button></div>`;
   }
   return`<div class="box st" data-drop="crew"><div class="row"><h3>🧭 สำรวจ</h3><span class="sub">${ZONES[zoneSel].n}</span><span style="flex:1"></span>${autoBtn('exp','aExp')}</div><div class="btns" style="margin-bottom:6px">${zs}</div>${body}</div>`;
@@ -772,12 +806,13 @@ function stashCard(){
   <button class="btn sm" data-a="mergeAll" ${mergeGroups()?'':'disabled'}>รวมดาวทั้งหมด (${mergeGroups()})</button><button class="btn sm" data-a="bulk" ${extras().length?'':'disabled'}>ปล่อยตัวซ้ำ (${extras().length})</button><button class="btn sm" data-a="sort">จัดเรียง</button>${autoBtn('rel','aRel')}</div>
   <div class="sgrid" style="margin-top:6px">${cells.join('')}</div></div>`;
 }
+const lockedCard=(t,cond)=>`<div class="box st locked"><h3>🔒 ${t}</h3><div class="sub">ปลดล็อกเมื่อ${cond}</div></div>`;
 function render(){
   const nurDone=S.nur.end!=null&&S.t>=S.nur.end,expDone=S.exp&&S.t>=S.exp.end;
   const aff=false;
-  const menu=[['codex','📖 สมุด'],['lab','🔧 ทดสอบ']];
+  const menu=[['help','❔'],['codex','📖 สมุด'],['lab','🔧 ทดสอบ']];
   const keep=['.mbody','.sgrid','.counter'].map(q=>{const e=document.querySelector(q);return e?e.scrollTop:0});
-  const title={up:'💰 อัปเกรด',codex:'📖 สมุดภาพ',lab:'🔧 ห้องทดสอบ'}[tab]||'';
+  const title={help:'❔ วิธีเล่น',up:'💰 อัปเกรด',codex:'📖 สมุดภาพ',lab:'🔧 ห้องทดสอบ'}[tab]||'';
   document.getElementById('app').innerHTML=`
   <div class="a-head box"><div class="top"><div class="coins">🪙 <span id="coins">${fmt(S.coins)}</span> <span class="rate" id="pm">~${fmt(perMin())}/นาที</span></div>
     <div class="res">${statusHTML()}${menu.map(([k,n])=>`<button class="tab ${tab===k?'on':''}" data-a="tab" data-v="${k}">${n}${k==='up'&&aff&&tab!=='up'?' <span class="badge">●</span>':''}</button>`).join('')}</div></div>
@@ -785,8 +820,8 @@ function render(){
     ${hintHTML()}</div>
   <div class="a-farm"><div class="farm">${Array.from({length:12},(_,i)=>slotHTML(i)).join('')}</div><div style="height:6px"></div>${toolbarHTML()}</div>
   <div class="a-kit">${kitchenCard()}</div>
-  <div class="a-side">${nurCard()}${expCard()}</div>
-  <div class="a-stash">${stashCard()}</div>
+  <div class="a-side">${S.unlock.nur?nurCard():lockedCard('💞 โรงผสม',`ขายอาหารครบ 3 จาน (${Math.min(3,S.sold)}/3)`)}${S.unlock.exp?expCard():lockedCard('🧭 สำรวจ','ผสมสัตว์ครั้งแรก')}</div>
+  <div class="a-stash">${S.unlock.nur?stashCard():lockedCard('🧺 ช่องเก็บสัตว์',`ขายอาหารครบ 3 จาน (${Math.min(3,S.sold)}/3)`)}</div>
   ${(()=>{const f=sel!=null?find(sel):null;return f?`<div id="pop" style="visibility:hidden">${infoHTML(f)}</div>`:''})()}
   ${tab?`<div class="modal"><div class="mbox ${tab==='up'?'wide':''}"><div class="mh"><b>${title}</b><button class="btn sm" data-a="tab" data-v="${tab}">ปิด ✕</button></div><div class="mbody">${panelHTML()}</div></div></div>`:''}`;
   ['.mbody','.sgrid','.counter'].forEach((q,i)=>{const e=document.querySelector(q);if(e)e.scrollTop=keep[i]});
@@ -924,6 +959,7 @@ document.addEventListener('click',e=>{if(suppress)return;if(sel!=null&&!tab&&!e.
 if(!load())init();
 if(!S.nur)S.nur={a:null,b:null,end:null};
 if(!S.away)S.away=[];
+if(!S.seen)S.seen={};if(!S.hintStart)S.hintStart={};if(!S.unlock)S.unlock={};
 if(!S.sat)S.sat={};if(S.orderNext===undefined){S.orderNext=15;S.order=null;S.orders=0}
 {
   const el=(Date.now()-S.lastReal)/1000;

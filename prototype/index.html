@@ -745,7 +745,7 @@ function report(){
 const autoBtn=(k,u)=>U(u)?`<button class="btn sm ${S.auto[k]?'on':''}" data-a="tgl" data-v="${k}">🔁 อัตโนมัติ ${S.auto[k]?'เปิด':'ปิด'}</button>`:'';
 function kitchenCard(){
   const q=S.throwQty||1,tp=targetPot();
-  const bagChips=Object.keys(S.bag).map(k=>`<button class="chip" title="${PR[k][1]} มูลค่า ${V[SP[k].rar]}" data-a="throw" data-v="${k}" data-drag="item:${k}" data-gh="${PR[k][2]}">${PR[k][2]}×${S.bag[k]} <span class="sub">${V[SP[k].rar]}</span></button>`).join('')||'';
+  const bagChips=Object.keys(S.bag).map(k=>`<button class="chip" title="${PR[k][1]} มูลค่า ${V[SP[k].rar]}" data-a="throw" data-v="${k}" data-drag="item:${k}" data-gh="${PR[k][2]}">${PR[k][2]}×${S.bag[k]}</button>`).join('')||'';
   const qty=[[1,'×1'],[5,'×5'],[999,'ทั้งหมด']].map(([n,l])=>`<button class="btn sm ${q===n?'pri':''}" data-a="qty" data-v="${n}">${l}</button>`).join('');
   const pots=Array.from({length:potN()},(_,i)=>{
     const p=S.pots[i],cls=i===tp?'pot3 sel':'pot3';

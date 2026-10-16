@@ -1,0 +1,228 @@
+<title>Garden Loop Study</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Mali:wght@500;700&family=Noto+Sans+Thai:wght@400;600&display=swap">
+<style>
+/* Layout: three columns on a wide window (garden | shops | backpack + pets), stacked on a narrow one. Gameplay study only: emoji, no art. */
+:root{
+  --bg:#e9f1e4; --panel:#fafcf6; --fg:#1d2a1c; --muted:#58684f; --line:#cbd8c2;
+  --accent:#3d7a38; --accent-fg:#fff; --warn:#a8501a; --ok:#2c7a46;
+  --t0:#7a8975; --t1:#26896a; --t2:#2a68b3; --t3:#8643b2; --t4:#c27d0a;
+  --font-d:'Mali','Noto Sans Thai',system-ui,sans-serif; --font-b:'Noto Sans Thai',system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111a13; --panel:#1a261d; --fg:#e4eedf; --muted:#98ad90; --line:#2e4132;
+  --accent:#74c26b; --accent-fg:#0c180e; --warn:#e69a62; --ok:#6fd08c;
+  --t0:#93a38e; --t1:#4fc4a0; --t2:#6fa5ee; --t3:#b98be0; --t4:#e8aa3b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111a13; --panel:#1a261d; --fg:#e4eedf; --muted:#98ad90; --line:#2e4132;
+  --accent:#74c26b; --accent-fg:#0c180e; --warn:#e69a62; --ok:#6fd08c;
+  --t0:#93a38e; --t1:#4fc4a0; --t2:#6fa5ee; --t3:#b98be0; --t4:#e8aa3b; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:13px/1.45 var(--font-b);padding-block:8px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+button{font:inherit;color:inherit;cursor:pointer}
+#app{display:grid;gap:8px;grid-template-columns:minmax(0,1fr);align-content:start}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px;min-height:0}
+.box h3{margin:0;font:700 14px var(--font-d)}
+.row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.sub{color:var(--muted);font-size:12px}
+.head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.coins{font:700 22px var(--font-d);font-variant-numeric:tabular-nums}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:7px;padding:3px 9px;min-height:28px}
+.btn.pri{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.btn.on{outline:2px solid var(--accent)}
+.btn:disabled{opacity:.45;cursor:default}
+.plots{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.plot{min-height:78px;border:2px dashed var(--line);border-radius:8px;background:var(--panel);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:3px;font-size:11px}
+.plot.g{border-style:solid;border-color:var(--accent)}
+.plot.r{border-style:solid;border-color:var(--t4);background:color-mix(in srgb,var(--t4) 14%,var(--panel))}
+.plot .em{font-size:26px;line-height:1.1}
+.plot.lock{opacity:.5}
+.bar{height:5px;width:80%;border-radius:3px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent)}
+.line{display:flex;gap:6px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding:3px 0}
+.line:last-child{border-bottom:0}
+.line .l{flex:1;min-width:0}
+.scroll{overflow:auto;min-height:0;flex:1;max-height:230px}
+.tag{font-size:11px;font-weight:600}
+.t0{color:var(--t0)}.t1{color:var(--t1)}.t2{color:var(--t2)}.t3{color:var(--t3)}.t4{color:var(--t4)}
+.chip{border:1px solid var(--line);border-radius:999px;padding:2px 9px;background:var(--panel)}
+.chip.on{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.msgs{font-size:12px;color:var(--muted);min-height:2.8em}
+.msgs div:first-child{color:var(--fg)}
+@media (min-width:860px){
+  body{overflow:hidden}
+  #app{height:100%;grid-template-columns:minmax(290px,1fr) minmax(280px,1fr) minmax(260px,.9fr);grid-template-rows:auto minmax(0,1fr);grid-template-areas:"head head head" "garden shop bag";align-content:stretch}
+  .a-head{grid-area:head}.a-garden{grid-area:garden}.a-shop{grid-area:shop}.a-bag{grid-area:bag}
+  .col{display:flex;flex-direction:column;gap:8px;min-height:0}
+  .scroll{max-height:none}
+}
+</style>
+
+<div id="app"></div>
+
+<script>
+(()=>{
+'use strict';
+/* ---------- data (numbers are my own, tuned for a similar feel; not the original game's) ---------- */
+const TIER=['สามัญ','พิเศษ','หายาก','ตำนาน','เทพ'];
+// stock = [min,max] per restock (min 0 means it can be missing); regrow>0 = multi-harvest
+const SEEDS=[
+ {id:'carrot',n:'แครอท',e:'🥕',tier:0,price:10,grow:8,fruits:1,regrow:0,harvests:1,val:15,stock:[8,20]},
+ {id:'straw',n:'สตรอว์เบอร์รี',e:'🍓',tier:0,price:60,grow:14,fruits:1,regrow:10,harvests:3,val:40,stock:[4,14]},
+ {id:'blue',n:'บลูเบอร์รี',e:'🫐',tier:1,price:300,grow:28,fruits:2,regrow:20,harvests:3,val:120,stock:[0,8]},
+ {id:'tomato',n:'มะเขือเทศ',e:'🍅',tier:1,price:800,grow:40,fruits:2,regrow:30,harvests:3,val:260,stock:[0,6]},
+ {id:'corn',n:'ข้าวโพด',e:'🌽',tier:2,price:2500,grow:60,fruits:3,regrow:45,harvests:2,val:700,stock:[0,3]},
+ {id:'pumpkin',n:'ฟักทอง',e:'🎃',tier:2,price:9000,grow:90,fruits:1,regrow:0,harvests:1,val:26000,stock:[0,3]},
+ {id:'dragon',n:'ผลมังกร',e:'🐲',tier:3,price:45000,grow:150,fruits:2,regrow:100,harvests:3,val:40000,stock:[0,1]},
+ {id:'divine',n:'แตงทิพย์',e:'🍈',tier:4,price:300000,grow:220,fruits:1,regrow:0,harvests:1,val:2000000,stock:[0,1]}];
+const SEED=Object.fromEntries(SEEDS.map(s=>[s.id,s]));
+// restock chance that an item with min 0 appears at all
+const APPEAR=[1,.55,.3,.12,.04];
+const MUTS=[
+ {id:'wet',n:'เปียก',e:'💧',m:2,w:'rain',p:.35},{id:'chill',n:'เย็น',e:'❄️',m:2,w:'frost',p:.35},{id:'shock',n:'ช็อต',e:'⚡',m:8,w:'storm',p:.15},
+ {id:'gold',n:'ทอง',e:'🥇',m:15,w:null,p:.012},{id:'rainbow',n:'รุ้ง',e:'🌈',m:40,w:null,p:.003}];
+const WEATHER={clear:{n:'แจ่มใส',e:'☀️'},rain:{n:'ฝนตก',e:'🌧️'},frost:{n:'น้ำค้างแข็ง',e:'🥶'},storm:{n:'พายุฟ้าผ่า',e:'⛈️'}};
+const EGGS=[{id:0,n:'ไข่สามัญ',e:'🥚',price:500,hatch:30},{id:1,n:'ไข่หายาก',e:'🪺',price:4000,hatch:60},{id:2,n:'ไข่ตำนาน',e:'🔮',price:30000,hatch:120}];
+const PETS=[{id:'dog',n:'หมา',e:'🐶',eff:'sell',lab:'ราคาขาย',v:[.06,.12,.22]},{id:'bunny',n:'กระต่าย',e:'🐰',eff:'grow',lab:'โตเร็ว',v:[.06,.12,.22]},
+ {id:'cat',n:'แมว',e:'🐱',eff:'mut',lab:'โอกาสกลายพันธุ์',v:[.25,.5,1]},{id:'bee',n:'ผึ้ง',e:'🐝',eff:'weight',lab:'ผลใหญ่ขึ้น',v:[.05,.1,.2]}];
+const PET=Object.fromEntries(PETS.map(p=>[p.id,p]));
+const RESTOCK=300, BAG=120, SPR={price:800,len:120,mult:1.5};
+const KEY='garden_clone_v1';
+
+/* ---------- state ---------- */
+let S,speed=1,sel='carrot',pressed=false,lastSig='';
+const fresh=()=>({t:0,coins:30,plots:Array(12).fill(null),unlocked:6,seeds:{carrot:2},stock:{},nextStock:0,weather:'clear',wEnd:0,wNext:90,
+  fruits:[],eggs:[],pets:[],eq:[],spr:0,msgs:[],uid:1,sold:0,earned:0,harvested:0,clicks:0,lastReal:Date.now(),log:[]});
+const save=()=>{try{S.lastReal=Date.now();localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+function load(){try{const j=localStorage.getItem(KEY);if(j){S=JSON.parse(j);return true}}catch(e){}return false}
+const msg=m=>{S.msgs.unshift(m);S.msgs.length=Math.min(S.msgs.length,3);S.log.push({t:S.t,m});if(S.log.length>200)S.log.shift()};
+const fmt=n=>{if(n<1000)return n<10&&n%1?n.toFixed(1):Math.floor(n)+'';const u=['K','M','B','T'];let i=-1;while(n>=1000&&i<u.length-1){n/=1000;i++}return n.toFixed(n<10?2:n<100?1:0)+u[i]};
+const fmtT=s=>{s=Math.max(0,Math.ceil(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
+
+/* ---------- pets, weather, shop ---------- */
+const petVal=(eff)=>S.eq.reduce((s,u)=>{const p=S.pets.find(x=>x.u===u);return p&&PET[p.id].eff===eff?s+PET[p.id].v[p.tier]:s},0);
+const growMult=()=>(1+petVal('grow'))*(S.spr>S.t?SPR.mult:1);
+function restock(){
+  S.stock={};
+  for(const s of SEEDS){const [a,b]=s.stock;S.stock[s.id]=(a===0&&Math.random()>APPEAR[s.tier])?0:rnd(Math.max(a,a===0?1:a),b);}
+  S.nextStock=S.t+RESTOCK;msg('🛒 ร้านเมล็ดรีสต็อกแล้ว');
+}
+function weatherTick(){
+  if(S.weather!=='clear'&&S.t>=S.wEnd){S.weather='clear';S.wNext=S.t+rnd(90,200);msg('☀️ อากาศแจ่มใสแล้ว')}
+  else if(S.weather==='clear'&&S.t>=S.wNext){const k=['rain','frost','storm'][rnd(0,2)];S.weather=k;S.wEnd=S.t+60;msg(`${WEATHER[k].e} ${WEATHER[k].n} เริ่มแล้ว (ผลที่เก็บตอนนี้มีโอกาสกลายพันธุ์)`)}
+}
+function sim(dt){
+  S.t+=dt;weatherTick();
+  if(S.t>=S.nextStock)restock();
+  const gm=growMult();
+  for(const p of S.plots){if(!p||p.ready)continue;p.prog+=dt*gm;if(p.prog>=p.need){p.ready=true;p.prog=p.need}}
+}
+function simSpan(g,m){const d=Math.max(m,g/200);let r=g;while(r>1e-9){const x=Math.min(d,r);sim(x);r-=x}}
+
+/* ---------- actions ---------- */
+const bagN=()=>S.fruits.length;
+function plant(i){
+  const s=SEED[sel];if(!s||S.plots[i]||i>=S.unlocked||!(S.seeds[sel]>0))return false;
+  S.seeds[sel]--;S.plots[i]={id:sel,prog:0,need:s.grow,ready:false,left:s.harvests,regrow:false};return true;
+}
+function harvest(i){
+  const p=S.plots[i];if(!p||!p.ready)return 0;const s=SEED[p.id];
+  if(bagN()+s.fruits>BAG){msg('🎒 กระเป๋าเต็ม ขายก่อน');return 0}
+  for(let k=0;k<s.fruits;k++){
+    const w=Math.round((0.75+Math.random()*0.6+petVal('weight'))*100)/100;
+    const muts=MUTS.filter(m=>(m.w===null||m.w===S.weather)&&Math.random()<m.p*(1+petVal('mut')));
+    const mult=muts.reduce((a,m)=>a*m.m,1);
+    S.fruits.push({id:p.id,w,muts:muts.map(m=>m.id),v:s.val*w*mult});
+    if(muts.length)msg(`${muts.map(m=>MUTS.find(x=>x.id===m.id).e).join('')} ${s.e} ${s.n} กลายพันธุ์ ×${mult} (${fmt(s.val*w*mult)})`);
+  }
+  S.harvested+=s.fruits;p.left--;
+  if(p.left>0){p.ready=false;p.prog=0;p.need=s.regrow}else S.plots[i]=null;
+  return s.fruits;
+}
+const sellAll=()=>{const v=S.fruits.reduce((a,f)=>a+f.v,0)*(1+petVal('sell'));if(!S.fruits.length)return;S.coins+=v;S.earned+=v;S.sold+=S.fruits.length;S.fruits=[];msg(`💰 ขายผลไม้ +${fmt(v)}`)};
+function act(a,v){
+  S.clicks++;v=isNaN(+v)?v:+v;
+  switch(a){
+  case'sel':sel=v;break;
+  case'plot':{const p=S.plots[v];if(v>=S.unlocked){const c=plotCost();if(v===S.unlocked&&S.coins>=c){S.coins-=c;S.unlocked++}}else if(p&&p.ready)harvest(v);else if(!p)plant(v);break}
+  case'plantAll':for(let i=0;i<S.unlocked;i++)if(!S.plots[i])plant(i);break;
+  case'harvestAll':for(let i=0;i<S.unlocked;i++)harvest(i);break;
+  case'sell':sellAll();break;
+  case'buy':{const s=SEED[v];if(S.stock[v]>0&&S.coins>=s.price){S.coins-=s.price;S.stock[v]--;S.seeds[v]=(S.seeds[v]||0)+1}break}
+  case'buyMax':{const s=SEED[v];const n=Math.min(S.stock[v]||0,Math.floor(S.coins/s.price));if(n>0){S.coins-=n*s.price;S.stock[v]-=n;S.seeds[v]=(S.seeds[v]||0)+n}break}
+  case'spr':if(S.coins>=SPR.price){S.coins-=SPR.price;S.spr=Math.max(S.spr,S.t)+SPR.len}break;
+  case'egg':{const e=EGGS[v];if(S.coins>=e.price&&S.eggs.length<6){S.coins-=e.price;S.eggs.push({u:S.uid++,tier:v,ready:S.t+e.hatch})}break}
+  case'hatch':{const i=S.eggs.findIndex(e=>e.u===v);const e=S.eggs[i];if(e&&S.t>=e.ready){S.eggs.splice(i,1);const pt=PETS[rnd(0,PETS.length-1)],u=S.uid++;S.pets.push({u,id:pt.id,tier:e.tier});msg(`🥚 ฟักได้ ${pt.e} ${pt.n} (${TIER[[0,2,3][e.tier]]})`);if(S.eq.length<3)S.eq.push(u)}break}
+  case'eq':{const i=S.eq.indexOf(v);if(i>=0)S.eq.splice(i,1);else if(S.eq.length<3)S.eq.push(v);break}
+  case'speed':speed=v;break;
+  case'cheat':S.coins+=Math.max(10000,S.coins);break;
+  case'reset':try{localStorage.removeItem(KEY)}catch(e){}S=fresh();restock();break;
+  }
+  lastSig=sig();render();
+}
+const plotCost=()=>Math.round(150*Math.pow(2.6,S.unlocked-6));
+
+/* ---------- render ---------- */
+const sig=()=>[Math.floor(S.coins),S.fruits.length,S.plots.map(p=>p?(p.ready?2:1):0).join(''),S.unlocked,S.weather,S.eggs.map(e=>S.t>=e.ready?1:0).join(''),S.pets.length,S.eq.join('.'),S.spr>S.t?1:0,Object.values(S.stock).join(','),Object.values(S.seeds).join(',')].join('|');
+function plotHTML(i){
+  if(i>=S.unlocked)return i===S.unlocked?`<button class="plot lock" data-a="plot" data-v="${i}" ${S.coins>=plotCost()?'':'disabled'}>＋ ที่ดิน<br>🪙${fmt(plotCost())}</button>`:`<div class="plot lock">🔒</div>`;
+  const p=S.plots[i];if(!p)return`<button class="plot" data-a="plot" data-v="${i}">${SEED[sel]&&S.seeds[sel]>0?`ปลูก ${SEED[sel].e}`:'ว่าง'}</button>`;
+  const s=SEED[p.id];
+  return`<button class="plot ${p.ready?'r':'g'}" data-a="plot" data-v="${i}"><span class="em">${s.e}</span>${p.ready?'<b>เก็บ!</b>':`<div class="bar"><i data-p="${i}"></i></div>`}<span class="sub">${p.left>1?`เหลือ ${p.left} รอบ`:''}</span></button>`;
+}
+function groupFruits(){
+  const g={};for(const f of S.fruits){const k=f.id+'|'+f.muts.join(',');(g[k]=g[k]||{id:f.id,muts:f.muts,n:0,v:0}).n++;g[k].v+=f.v}
+  return Object.values(g).sort((a,b)=>b.v-a.v);
+}
+function render(){
+  const gs=groupFruits(),mult=1+petVal('sell'),total=S.fruits.reduce((a,f)=>a+f.v,0)*mult;
+  const seedRows=SEEDS.map(s=>{const st=S.stock[s.id]||0;return`<div class="line"><span class="l">${s.e} <b class="t${s.tier}">${s.n}</b> <span class="sub">${TIER[s.tier]} · โต ${s.grow}วิ${s.harvests>1?` · ${s.harvests} รอบ`:''} · ผลละ ~${fmt(s.val)}</span></span><span class="sub">×${st}</span><button class="btn" data-a="buy" data-v="${s.id}" ${st>0&&S.coins>=s.price?'':'disabled'}>🪙${fmt(s.price)}</button><button class="btn" data-a="buyMax" data-v="${s.id}" ${st>0&&S.coins>=s.price?'':'disabled'}>สูงสุด</button></div>`}).join('');
+  const own=SEEDS.filter(s=>S.seeds[s.id]>0).map(s=>`<button class="chip ${sel===s.id?'on':''}" data-a="sel" data-v="${s.id}">${s.e}×${S.seeds[s.id]}</button>`).join('')||'<span class="sub">ยังไม่มีเมล็ด</span>';
+  const fr=gs.map(g=>`<div class="line"><span class="l">${SEED[g.id].e} ${SEED[g.id].n} ×${g.n} ${g.muts.map(m=>MUTS.find(x=>x.id===m).e).join('')}</span><span class="sub">🪙${fmt(g.v*mult)}</span></div>`).join('')||'<div class="sub">กระเป๋าว่าง</div>';
+  const eggs=S.eggs.map(e=>{const done=S.t>=e.ready;return`<div class="line"><span class="l">${EGGS[e.tier].e} ${EGGS[e.tier].n}</span>${done?`<button class="btn pri" data-a="hatch" data-v="${e.u}">ฟัก!</button>`:`<span class="sub" data-et="${e.ready}">${fmtT(e.ready-S.t)}</span>`}</div>`}).join('');
+  const pets=S.pets.map(p=>{const d=PET[p.id];const on=S.eq.includes(p.u);return`<div class="line"><span class="l">${d.e} ${d.n} <span class="sub">${d.lab} +${Math.round(d.v[p.tier]*100)}%</span></span><button class="btn ${on?'on':''}" data-a="eq" data-v="${p.u}">${on?'สวมอยู่':'สวม'}</button></div>`}).join('')||'<div class="sub">ยังไม่มีสัตว์เลี้ยง</div>';
+  const w=WEATHER[S.weather];
+  document.getElementById('app').innerHTML=`
+  <div class="box a-head"><div class="head"><div class="coins">🪙 <span id="coins">${fmt(S.coins)}</span></div>
+    <div class="row"><span>${w.e} ${w.n}${S.weather!=='clear'?` <span class="sub" id="wt">${fmtT(S.wEnd-S.t)}</span>`:''}</span>
+    <span class="sub">${S.spr>S.t?`💦 สปริงเกอร์ ${fmtT(S.spr-S.t)}`:''}</span>
+    ${[1,10,60].map(x=>`<button class="btn ${speed===x?'on':''}" data-a="speed" data-v="${x}">×${x}</button>`).join('')}
+    <button class="btn" data-a="cheat">โกงเหรียญ</button><button class="btn" data-a="reset">เริ่มใหม่</button></div></div>
+    <div class="msgs">${S.msgs.map(m=>`<div>${m}</div>`).join('')}</div></div>
+  <div class="col a-garden"><div class="box"><h3>🌱 สวน</h3><div class="plots">${Array.from({length:12},(_,i)=>plotHTML(i)).join('')}</div>
+    <div class="row"><button class="btn pri" data-a="harvestAll">🧺 เก็บทั้งหมด</button><button class="btn" data-a="plantAll">🌱 ปลูกทั้งหมด (${SEED[sel]?SEED[sel].e:''})</button></div>
+    <div class="sub">เมล็ดที่มี (เลือกชนิดที่จะปลูก)</div><div class="row">${own}</div></div></div>
+  <div class="col a-shop"><div class="box" style="flex:1"><div class="row"><h3>🛒 ร้านเมล็ด</h3><span class="sub">รีสต็อกใน <b id="rs">${fmtT(S.nextStock-S.t)}</b></span></div><div class="scroll">${seedRows}</div></div>
+    <div class="box"><h3>🔧 ร้านอุปกรณ์ / ไข่</h3>
+      <div class="line"><span class="l">💦 สปริงเกอร์ <span class="sub">พืชโตเร็ว ×${SPR.mult} นาน ${SPR.len} วิ</span></span><button class="btn" data-a="spr" ${S.coins>=SPR.price?'':'disabled'}>🪙${SPR.price}</button></div>
+      ${EGGS.map((e,i)=>`<div class="line"><span class="l">${e.e} ${e.n} <span class="sub">ฟัก ${e.hatch} วิ</span></span><button class="btn" data-a="egg" data-v="${i}" ${S.coins>=e.price&&S.eggs.length<6?'':'disabled'}>🪙${fmt(e.price)}</button></div>`).join('')}</div></div>
+  <div class="col a-bag"><div class="box" style="flex:1"><div class="row"><h3>🎒 กระเป๋า ${S.fruits.length}/${BAG}</h3><span style="flex:1"></span><button class="btn pri" data-a="sell" ${S.fruits.length?'':'disabled'}>ขายทั้งหมด 🪙${fmt(total)}</button></div><div class="scroll">${fr}</div></div>
+    <div class="box"><h3>🐾 สัตว์เลี้ยง (สวมได้ 3)</h3>${eggs}<div class="scroll" style="max-height:120px">${pets}</div></div></div>`;
+  tickUI();
+}
+function tickUI(){
+  const q=id=>document.getElementById(id);
+  q('coins')&&(q('coins').textContent=fmt(S.coins));q('rs')&&(q('rs').textContent=fmtT(S.nextStock-S.t));q('wt')&&(q('wt').textContent=fmtT(S.wEnd-S.t));
+  document.querySelectorAll('[data-p]').forEach(el=>{const p=S.plots[+el.dataset.p];if(p)el.style.width=Math.min(100,100*p.prog/p.need)+'%'});
+  document.querySelectorAll('[data-et]').forEach(el=>{el.textContent=fmtT(+el.dataset.et-S.t)});
+}
+document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(el&&!el.disabled)act(el.dataset.a,el.dataset.v)});
+document.addEventListener('pointerdown',()=>{pressed=true});document.addEventListener('pointerup',()=>{pressed=false});
+
+/* ---------- loop ---------- */
+let last=performance.now(),sv=0;
+function loop(){
+  const now=performance.now(),dt=Math.min(600,(now-last)/1000);last=now;
+  simSpan(dt*speed,.5);
+  const s=sig();if(s!==lastSig&&!pressed){lastSig=s;render()}else tickUI();
+  sv+=dt;if(sv>5){sv=0;save()}
+}
+if(!load()){S=fresh();restock()}
+{const el=(Date.now()-S.lastReal)/1000;if(el>10)simSpan(Math.min(el,6*3600),1)}
+lastSig=sig();render();setInterval(loop,250);
+window.__G={get S(){return S},act,simSpan,SEEDS,MUTS,EGGS,PETS,fmt,BAG,plotCost,groupFruits,setSel:v=>{sel=v},get sel(){return sel}};
+})();
+</script>
